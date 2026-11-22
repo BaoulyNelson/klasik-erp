@@ -8,6 +8,7 @@
     "dev:api": "python backend/manage.py runserver 127.0.0.1:8000",
     "backend:check": "python backend/manage.py check",
     "backend:migrate": "python backend/manage.py migrate",
+    "backend:seed": "python backend/manage.py seed_demo",
     "backend:test": "python backend/manage.py test api",
     "build": "vite build",
     "preview": "vite preview",

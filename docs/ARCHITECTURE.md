@@ -65,6 +65,10 @@ Les actions métier doivent être explicites pour éviter qu’un CRUD génériq
 
 La conversion de fixtures doit vérifier le nombre d’objets, l’absence de relations orphelines et le total des indicateurs par tenant. Un import initial contrôlé des données personnalisées persistées dans `localStorage` n’est pas défini par les sources; il faudra une décision et un outil séparés, sans migration automatique dans un seed idempotent.
 
+## État de l’implémentation
+
+Le socle Django expose actuellement les endpoints JWT, profil, établissements accessibles et collections métier génériques dans une table JSON tenant-scopée. Le frontend garde le mode local par défaut; en mode API il charge les collections permises, synchronise leurs mutations CRUD et conserve les jetons de session dans `sessionStorage`. La connexion Google, la récupération de mot de passe, les modèles relationnels typés, les fichiers et les APIs de gestion des comptes/configurations restent à construire. Les écarts de livraison sont consignés dans `docs/RAPPORT_PHASE_2.md` et `docs/RAPPORT_PHASE_3.md`.
+
 ## Étapes et état
 
 Phase 0 documente le système existant et les hypothèses. La phase 1 crée le socle technique et des tests de santé/authentification. Les phases 2 à 6 sont nécessaires avant de prétendre à la parité métier, à la suppression de Firebase ou à la réussite complète des parcours d’interface; elles sont suivies dans le rapport de tâche.

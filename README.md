@@ -24,7 +24,7 @@ Application de gestion éducative multi-établissements : React, TypeScript, Vit
    if (-not (Test-Path backend\.env)) { Copy-Item backend\.env.example backend\.env }
    ```
 
-   Les fichiers `.env` sont ignorés par Git. `VITE_SOURCE_DONNEES=local` conserve le comportement actuel de l’interface; l’API Django est en cours de branchement par phases.
+   Les fichiers `.env` sont ignorés par Git. `VITE_SOURCE_DONNEES=local` conserve le mode local; `VITE_SOURCE_DONNEES=api` active l’authentification Django, le chargement des collections autorisées et leur synchronisation CRUD.
 
 3. Créer l’environnement Python et appliquer les migrations :
 
@@ -33,6 +33,7 @@ Application de gestion éducative multi-établissements : React, TypeScript, Vit
    backend\.venv\Scripts\python -m pip install -r backend\requirements.txt
    .\backend\.venv\Scripts\Activate.ps1
    npm run backend:migrate
+   npm run backend:seed
    ```
 
 4. Lancer l’API et l’interface dans deux terminaux :
@@ -49,9 +50,11 @@ L’interface est disponible à `http://localhost:3000/`, l’API à `http://127
 
 ## Variables d’environnement
 
-- Frontend : `VITE_API_URL` (par défaut `/api`) et `VITE_SOURCE_DONNEES` (`local` par défaut, `api` prévu pour le branchement ultérieur).
+- Frontend : `VITE_API_URL` (par défaut `/api`) et `VITE_SOURCE_DONNEES` (`local` par défaut ou `api`).
 - Backend : `backend/.env.example` documente la clé Django, le mode debug, les hôtes/origines, SQLite et les paramètres PostgreSQL.
 - Ne copiez aucune clé privée, valeur `.env` ou configuration Firebase locale dans un commit. `firebase-applet-config.json` est ignoré par Git.
+
+En mode API et en développement (`DJANGO_DEBUG=true`), l’écran garde ses comptes démo et l’API délivre un JWT pour le compte sélectionné. Ce mécanisme de démonstration est désactivé si `DEBUG=false`. Les connexions réelles utilisent courriel et mot de passe Django. Les comptes importés par `seed_demo` n’ont pas de mot de passe utilisable : un administrateur doit leur en définir un. La connexion Google et la récupération de mot de passe ne sont pas encore reliées à Django.
 
 ## Vérifications
 
@@ -62,7 +65,7 @@ npm run backend:check
 npm run backend:test
 ```
 
-Le backend actuel fournit JWT, profil courant, `/api/sante/`, OpenAPI et l’administration des utilisateurs. Les modèles métier, la commande `seed_demo`, les listes CRUD, l’authentification React via Django et l’isolation serveur par établissement ne sont pas encore terminés; voir les rapports de phase dans `docs/`.
+Le backend fournit JWT, profil courant, `/api/sante/`, OpenAPI, l’administration des utilisateurs, un magasin de données JSON tenant-scopé et la commande `seed_demo`. Le client en mode API charge les collections autorisées et synchronise leurs créations, modifications et suppressions. Les permissions filtrent les tenants et les périmètres Parent/Apprenant/Enseignant. Les modèles métier relationnels détaillés, la fédération Google, la récupération de mot de passe, les fichiers et la gestion API des comptes/établissements restent à terminer; voir les rapports de phase dans `docs/`.
 
 ## Documentation
 
@@ -70,8 +73,9 @@ Le backend actuel fournit JWT, profil courant, `/api/sante/`, OpenAPI et l’adm
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) : architecture et matrice des permissions.
 - [`docs/HYPOTHESES.md`](docs/HYPOTHESES.md) : ambiguïtés et décisions à valider.
 - [`docs/API.md`](docs/API.md) : endpoints actuellement disponibles.
+- [`docs/RAPPORT_PHASE_2.md`](docs/RAPPORT_PHASE_2.md) et [`docs/RAPPORT_PHASE_3.md`](docs/RAPPORT_PHASE_3.md) : changements, vérifications et limites des phases réalisées.
 - [`backend/README.md`](backend/README.md) : installation et configuration Django.
 
 ## État de migration
 
-Le frontend reste visuellement inchangé et conserve sa source de données locale par défaut. Les phases 2 à 6 doivent implémenter les modèles/fixtures, l’isolation multitenant, le client API, le branchement des domaines, les fichiers et le durcissement avant qu’une utilisation métier via Django ou la suppression de Firebase soit annoncée.
+Le frontend conserve sa source locale par défaut et peut être lancé en mode API. Les deux modes d’authentification et les données de démonstration sont disponibles; certaines fonctions restent locales et les modèles métier utilisent actuellement un stockage JSON commun. Les rapports de phases listent les écarts qui empêchent encore d’annoncer la parité complète ou de supprimer Firebase.

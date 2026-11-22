@@ -1,0 +1,6 @@
+{
+  "name": "Klasik ERP",
+  "description": "ERP éducatif SaaS multi-établissements pour écoles professionnelles, établissements scolaires et universités en Haïti.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
