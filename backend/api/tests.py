@@ -7,8 +7,8 @@ from django.test import TestCase, override_settings
 from io import StringIO
 from unittest.mock import patch
 from rest_framework.test import APIClient
-from comptes.models import AffiliationEtablissement
-from donnees.models import EnregistrementMetier, FichierTeleverse
+from comptes.models import AffiliationEtablissement, SurchargePermissions
+from donnees.models import EnregistrementMetier, EntreeAuditApi, FichierTeleverse
 from etablissements.models import Etablissement
 
 Utilisateur = get_user_model()
@@ -258,6 +258,58 @@ class TestsApiMultitenant(TestCase):
             )
 
         self.assertEqual(reponse.status_code, 403)
+
+    def test_surcharge_permissions_est_tenant_scopee_et_auditee(self):
+        base = f"/api/etablissements/{self.etablissement.id}/permissions/"
+        modification = self.client.put(
+            base,
+            {
+                "role": "ENSEIGNANT",
+                "permissions": ["pedagogie:voir", "campus_numerique:voir"],
+            },
+            format="json",
+        )
+        lecture = self.client.get(base)
+
+        self.assertEqual(modification.status_code, 200)
+        self.assertEqual(
+            modification.json()["permissions"],
+            ["pedagogie:voir", "campus_numerique:voir"],
+        )
+        self.assertEqual(
+            lecture.json()["permissions"]["ENSEIGNANT"],
+            ["pedagogie:voir", "campus_numerique:voir"],
+        )
+        self.assertTrue(
+            SurchargePermissions.objects.filter(
+                etablissement=self.etablissement,
+                role="ENSEIGNANT",
+            ).exists()
+        )
+        self.assertTrue(
+            EntreeAuditApi.objects.filter(
+                etablissement=self.etablissement,
+                utilisateur=self.utilisateur,
+                action="MODIFICATION",
+                collection="roles",
+                id_objet="ENSEIGNANT",
+            ).exists()
+        )
+
+    def test_surcharge_permissions_refuse_un_role_sans_droit_et_un_tenant_externe(self):
+        AffiliationEtablissement.objects.filter(utilisateur=self.utilisateur).update(role="AUDITEUR")
+        sans_droit = self.client.put(
+            f"/api/etablissements/{self.etablissement.id}/permissions/",
+            {"role": "ENSEIGNANT", "permissions": ["pedagogie:voir"]},
+            format="json",
+        )
+        autre_tenant = self.client.get(
+            f"/api/etablissements/{self.autre_etablissement.id}/permissions/"
+        )
+
+        self.assertEqual(sans_droit.status_code, 403)
+        self.assertEqual(autre_tenant.status_code, 403)
+        self.assertFalse(SurchargePermissions.objects.exists())
 
 
 @override_settings(

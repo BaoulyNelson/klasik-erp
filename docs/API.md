@@ -13,6 +13,8 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `POST` | `/api/auth/demo/` | Publique, développement seulement | Délivre un JWT de démonstration pour un utilisateur actif; répond 404 lorsque `DEBUG=false`. |
 | `GET` | `/api/auth/me/` | JWT d’accès | Profil courant sérialisé avec `id`, `courriel`, `nom_complet`, `telephone`, `role`, `est_super_admin_plateforme`, `est_actif`. |
 | `GET` | `/api/etablissements/` | JWT d’accès | Établissements affiliés à l’utilisateur; le super-administrateur plateforme peut les lister tous. |
+| `GET` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Liste les surcharges RBAC configurées dans l’établissement. |
+| `PUT` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Enregistre les permissions d’un rôle du tenant; le rôle `SUPER_ADMIN` ne peut pas être modifié. Chaque changement est inscrit dans le journal d’audit serveur. |
 | `GET` | `/api/etablissements/{id_etablissement}/donnees/{collection}/` | JWT d’accès et permission de lecture | Liste paginée (50 par défaut, `page_size` de 1 à 100), filtre exact par champ, `search` dans les données et tri `id` / `-id`. |
 | `POST` | `/api/etablissements/{id_etablissement}/donnees/{collection}/` | JWT d’accès et permission d’écriture | Crée une donnée de la collection, avec identifiant `id`; le serveur renseigne `id_etablissement`. |
 | `GET` | `/api/etablissements/{id_etablissement}/donnees/{collection}/{id}/` | JWT d’accès et permission de lecture | Lit un enregistrement tenant-scopé. |

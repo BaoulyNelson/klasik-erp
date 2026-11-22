@@ -286,6 +286,25 @@ async function charger_collection_api(
   }
 }
 
+async function charger_surcharges_permissions_api(
+  id_etablissement: string
+): Promise<Record<string, IdentifiantPermission[]>> {
+  try {
+    const resultat = await requeteApi<{
+      permissions: Record<string, IdentifiantPermission[]>;
+    }>(`/etablissements/${encodeURIComponent(id_etablissement)}/permissions/`);
+    return Object.fromEntries(
+      Object.entries(resultat.permissions).map(([role, permissions]) => [
+        `${id_etablissement}:${role}`,
+        permissions,
+      ])
+    );
+  } catch (erreur: unknown) {
+    if (erreur instanceof ErreurApi && erreur.statut === 403) return {};
+    throw erreur;
+  }
+}
+
 function obtenir_etat_persiste_defaut(): EtatPersiste {
   return {
     configuration_plateforme: CONFIGURATION_PLATEFORME_DEFAUT,
@@ -1366,12 +1385,55 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
       const cle = `${id_etablissement}:${id_role}`;
+      const obtenir_permissions_mises_a_jour = (
+        precedent: IdentifiantPermission[]
+      ): IdentifiantPermission[] => {
+        const existe = precedent.includes(id_permission);
+        return existe
+          ? precedent.filter((permission) => permission !== id_permission)
+          : [...precedent, id_permission];
+      };
+      if (SOURCE_API) {
+        void (async () => {
+          try {
+            const permissions = obtenir_permissions_mises_a_jour(
+              obtenir_permissions_role(id_etablissement, id_role)
+            );
+            await requeteApi(`/etablissements/${encodeURIComponent(id_etablissement)}/permissions/`, {
+              method: 'PUT',
+              body: { role: id_role, permissions },
+            });
+            definir_etat((precedent) => ({
+              ...precedent,
+              surcharges_permissions: {
+                ...precedent.surcharges_permissions,
+                [cle]: permissions,
+              },
+            }));
+            ajouter_entree_audit({
+              id_etablissement,
+              nom_acteur: utilisateur_actif.nom_complet,
+              role_acteur: ROLES[id_role_actif].libelle,
+              action: `Modification permission « ${id_permission} »`,
+              cible: `Rôle ${ROLES[id_role].libelle}`,
+              categorie: 'RBAC',
+            });
+          } catch (erreur: unknown) {
+            ajouter_toast({
+              titre: 'Modification des permissions impossible',
+              description:
+                erreur instanceof Error
+                  ? erreur.message
+                  : 'Le serveur n’a pas pu enregistrer cette modification.',
+              variante: 'error',
+            });
+          }
+        })();
+        return;
+      }
       definir_etat((precedent) => {
         const actuelles = precedent.surcharges_permissions[cle] ?? ROLES[id_role].permissions_defaut;
-        const existe = actuelles.includes(id_permission);
-        const mises_a_jour = existe
-          ? actuelles.filter((p) => p !== id_permission)
-          : [...actuelles, id_permission];
+        const mises_a_jour = obtenir_permissions_mises_a_jour(actuelles);
         return {
           ...precedent,
           surcharges_permissions: { ...precedent.surcharges_permissions, [cle]: mises_a_jour },
@@ -1386,7 +1448,13 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         categorie: 'RBAC',
       });
     },
-    [ajouter_entree_audit, ajouter_toast, utilisateur_actif.nom_complet, id_role_actif]
+      [
+        ajouter_entree_audit,
+        ajouter_toast,
+        obtenir_permissions_role,
+        utilisateur_actif.nom_complet,
+        id_role_actif,
+      ]
   );
 
   const changer_etablissement = useCallback(
@@ -1432,7 +1500,19 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
               (donnees_api as Record<string, unknown>)[cle] = lignes;
             })
           );
-          const nouvel_etat: EtatPersiste = { ...etat, ...donnees_api };
+          const surcharges_permissions = await charger_surcharges_permissions_api(id_etablissement);
+          const nouvel_etat: EtatPersiste = {
+            ...etat,
+            ...donnees_api,
+            surcharges_permissions: {
+              ...Object.fromEntries(
+                Object.entries(etat.surcharges_permissions).filter(
+                  ([cle]) => !cle.startsWith(`${id_etablissement}:`)
+                )
+              ),
+              ...surcharges_permissions,
+            },
+          };
           instantane_api.current = nouvel_etat;
           definir_etat(nouvel_etat);
           appliquer_changement();
@@ -2132,6 +2212,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           (donnees_api as Record<string, unknown>)[cle] = lignes;
         })
       );
+      const surcharges_permissions = await charger_surcharges_permissions_api(
+        etablissement_api.id
+      );
 
       const utilisateur_source =
         etat.utilisateurs.find((utilisateur) => utilisateur.id === profil.id) ??
@@ -2175,7 +2258,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         ],
         journaux_audit: [],
         file_hors_ligne: [],
-        surcharges_permissions: {},
+        surcharges_permissions,
       };
       instantane_api.current = nouvel_etat;
       definir_etat(nouvel_etat);

@@ -5,6 +5,7 @@
 - Modèles d’établissements, affiliations, surcharges RBAC, enregistrements JSON par collection et journal d’audit API.
 - Endpoints paginés de lecture et opérations CRUD tenant-scopées; les rôles Parent, Apprenant et Enseignant ont des périmètres de lignes dédiés.
 - Administration Django des comptes/affiliations et commande `seed_demo` idempotente construite depuis la fixture des données initiales.
+- API tenant-scopée de lecture et de mise à jour des surcharges RBAC, réservée aux utilisateurs ayant `roles:gerer`; le rôle `SUPER_ADMIN` reste non modifiable et chaque changement est audité.
 - Tests couvrant JWT, refus d’accès, frontières de tenant, restrictions parentales, CRUD et import de démonstration.
 - Aucun fichier existant supprimé. Les mots de passe de démonstration ne sont pas importés comme mots de passe Django.
 
@@ -17,6 +18,7 @@ La phase est **partielle** : l’API conserve les formes JSON existantes dans un
 - `manage.py check` : réussi.
 - `manage.py makemigrations --check --dry-run` : aucune migration manquante.
 - `manage.py test api` : tests d’authentification, CRUD, permissions et isolation multitenant réussis.
+- Après ajout de l’API RBAC : 20 tests Django passent, y compris les refus d’un rôle sans autorisation et d’un établissement non affilié.
 - `seed_demo` : 5 établissements, 14 utilisateurs et 494 enregistrements métier; l’idempotence est vérifiée par test.
 - `npm run lint` et `npm run build` : réussis; l’avertissement de taille du bundle Vite (>500 Ko) subsiste.
 

@@ -13,10 +13,12 @@ from rest_framework.views import APIView
 
 from api.permissions import (
     COLLECTIONS_PORTAIL,
+    PERMISSIONS_PAR_ROLE,
     PERMISSIONS_COLLECTIONS,
     permissions_utilisateur,
     role_utilisateur_etablissement,
 )
+from comptes.models import SurchargePermissions
 from donnees.models import EnregistrementMetier, EntreeAuditApi
 from etablissements.models import Etablissement
 
@@ -157,6 +159,72 @@ class ListeEtablissementsView(APIView):
                 }
             )
         return Response(resultats)
+
+
+class PermissionsRolesTenantView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        operation_id="listerPermissionsRoles",
+        responses=OpenApiTypes.OBJECT,
+    )
+    def get(self, request, id_etablissement: str):
+        etablissement = _obtenir_etablissement(id_etablissement)
+        _verifier_permission(request, etablissement, "roles:gerer")
+        surcharges = SurchargePermissions.objects.filter(etablissement=etablissement).exclude(
+            role="SUPER_ADMIN"
+        )
+        return Response(
+            {
+                "permissions": {
+                    surcharge.role: surcharge.permissions for surcharge in surcharges
+                }
+            }
+        )
+
+    @extend_schema(
+        operation_id="modifierPermissionsRole",
+        request=inline_serializer(
+            name="ModifierPermissionsRole",
+            fields={
+                "role": serializers.ChoiceField(choices=[role for role in PERMISSIONS_PAR_ROLE if role != "SUPER_ADMIN"]),
+                "permissions": serializers.ListField(child=serializers.CharField()),
+            },
+        ),
+        responses=OpenApiTypes.OBJECT,
+    )
+    def put(self, request, id_etablissement: str):
+        etablissement = _obtenir_etablissement(id_etablissement)
+        _verifier_permission(request, etablissement, "roles:gerer")
+        role = request.data.get("role")
+        permissions = request.data.get("permissions")
+        if not isinstance(role, str) or role not in PERMISSIONS_PAR_ROLE or role == "SUPER_ADMIN":
+            raise ValidationError({"role": "Le rôle demandé ne peut pas être modifié."})
+        if not isinstance(permissions, list) or any(
+            not isinstance(permission, str) for permission in permissions
+        ):
+            raise ValidationError({"permissions": "La liste de permissions est invalide."})
+        permissions_valides = set().union(*PERMISSIONS_PAR_ROLE.values())
+        permissions_uniques = list(dict.fromkeys(permissions))
+        inconnues = set(permissions_uniques) - permissions_valides
+        if inconnues:
+            raise ValidationError({"permissions": "Une ou plusieurs permissions sont inconnues."})
+
+        surcharge, _ = SurchargePermissions.objects.get_or_create(
+            etablissement=etablissement,
+            role=role,
+            defaults={"permissions": []},
+        )
+        surcharge.permissions = permissions_uniques
+        surcharge.save(update_fields=("permissions",))
+        EntreeAuditApi.objects.create(
+            etablissement=etablissement,
+            utilisateur=request.user,
+            action="MODIFICATION",
+            collection="roles",
+            id_objet=role,
+        )
+        return Response({"role": role, "permissions": permissions_uniques})
 
 
 class CollectionTenantView(APIView):
