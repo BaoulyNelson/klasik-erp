@@ -1,8 +1,11 @@
 import json
 
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
+from django.core.validators import validate_email
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
@@ -11,7 +14,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from comptes.models import AffiliationEtablissement, SurchargePermissions
+from comptes.models import (
+    AffiliationEtablissement,
+    RoleUtilisateur,
+    SurchargePermissions,
+    Utilisateur,
+)
 from api.permissions import (
     COLLECTIONS_PORTAIL,
     PERMISSIONS_PAR_ROLE,
@@ -304,6 +312,40 @@ class PermissionsRolesTenantView(APIView):
 class ListeUtilisateursTenantView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @staticmethod
+    def _serialiser_utilisateur(utilisateur, etablissement, affiliation=None) -> dict:
+        if affiliation is None:
+            affiliation = AffiliationEtablissement.objects.get(
+                utilisateur=utilisateur,
+                etablissement=etablissement,
+            )
+        profil = utilisateur.profil or {}
+        initiales = "".join(
+            mot[0].upper() for mot in utilisateur.nom_complet.split() if mot
+        )[:2]
+        return {
+            "id": utilisateur.id,
+            "nom_complet": utilisateur.nom_complet,
+            "courriel": utilisateur.courriel,
+            "telephone": utilisateur.telephone,
+            "mot_de_passe_demo": "",
+            "initiales_avatar": initiales,
+            "est_super_admin_plateforme": utilisateur.est_super_admin_plateforme,
+            "est_actif": utilisateur.est_actif,
+            "double_facteur_actif": profil.get("double_facteur_actif", False),
+            "doit_changer_mot_de_passe": profil.get("doit_changer_mot_de_passe", False),
+            "mot_de_passe_mis_a_jour_le": profil.get("mot_de_passe_mis_a_jour_le"),
+            "tentatives_connexion_echouees": profil.get("tentatives_connexion_echouees", 0),
+            "verrouille_jusqua": profil.get("verrouille_jusqua"),
+            "affiliations": [
+                {
+                    "id_etablissement": etablissement.id,
+                    "id_role": affiliation.role,
+                    "fonction_locale": affiliation.fonction_locale,
+                }
+            ],
+        }
+
     @extend_schema(
         operation_id="listerUtilisateursEtablissement",
         responses=OpenApiTypes.OBJECT,
@@ -316,34 +358,237 @@ class ListeUtilisateursTenantView(APIView):
             .select_related("utilisateur")
             .order_by("utilisateur__nom_complet", "utilisateur__courriel")
         )
-        utilisateurs = []
-        for affiliation in affiliations:
-            utilisateur = affiliation.utilisateur
-            initiales = "".join(
-                mot[0].upper()
-                for mot in utilisateur.nom_complet.split()
-                if mot
-            )[:2]
-            utilisateurs.append(
-                {
-                    "id": utilisateur.id,
-                    "nom_complet": utilisateur.nom_complet,
-                    "courriel": utilisateur.courriel,
-                    "telephone": utilisateur.telephone,
-                    "mot_de_passe_demo": "",
-                    "initiales_avatar": initiales,
-                    "est_super_admin_plateforme": utilisateur.est_super_admin_plateforme,
-                    "est_actif": utilisateur.est_actif,
-                    "affiliations": [
-                        {
-                            "id_etablissement": etablissement.id,
-                            "id_role": affiliation.role,
-                            "fonction_locale": affiliation.fonction_locale,
-                        }
-                    ],
-                }
+        return Response(
+            [
+                self._serialiser_utilisateur(
+                    affiliation.utilisateur,
+                    etablissement,
+                    affiliation,
+                )
+                for affiliation in affiliations
+            ]
+        )
+
+    @extend_schema(operation_id="creerUtilisateurEtablissement", request=OpenApiTypes.OBJECT)
+    @transaction.atomic
+    def post(self, request, id_etablissement: str):
+        etablissement = _obtenir_etablissement(id_etablissement)
+        _verifier_permission(request, etablissement, "comptes:gerer")
+        donnees = request.data
+        nom_complet = donnees.get("nom_complet")
+        courriel = donnees.get("courriel")
+        telephone = donnees.get("telephone", "")
+        role = donnees.get("id_role")
+        fonction_locale = donnees.get("fonction_locale", "")
+        mot_de_passe = donnees.get("mot_de_passe")
+        if not isinstance(nom_complet, str) or len(nom_complet.strip()) < 2:
+            raise ValidationError({"nom_complet": "Le nom complet doit contenir au moins 2 caractères."})
+        if not isinstance(courriel, str):
+            raise ValidationError({"courriel": "Une adresse courriel valide est obligatoire."})
+        try:
+            validate_email(courriel)
+        except DjangoValidationError as erreur:
+            raise ValidationError({"courriel": "L’adresse courriel est invalide."}) from erreur
+        if not isinstance(role, str) or role not in RoleUtilisateur.values or role == "SUPER_ADMIN":
+            raise ValidationError({"id_role": "Le rôle demandé ne peut pas être attribué."})
+        if not isinstance(telephone, str) or not isinstance(fonction_locale, str):
+            raise ValidationError("Les coordonnées de l’utilisateur sont invalides.")
+        if not isinstance(mot_de_passe, str) or len(mot_de_passe) < 8:
+            raise ValidationError({"mot_de_passe": "Le mot de passe doit contenir au moins 8 caractères."})
+        if Utilisateur.objects.filter(courriel__iexact=courriel.strip()).exists():
+            raise ValidationError({"courriel": "Cette adresse courriel est déjà utilisée."})
+
+        profil = {
+            "double_facteur_actif": bool(donnees.get("double_facteur_actif", False)),
+            "doit_changer_mot_de_passe": bool(donnees.get("doit_changer_mot_de_passe", False)),
+            "mot_de_passe_mis_a_jour_le": timezone.now().date().isoformat(),
+            "tentatives_connexion_echouees": 0,
+        }
+        utilisateur = Utilisateur.objects.create_user(
+            courriel=courriel.strip(),
+            password=mot_de_passe,
+            nom_complet=nom_complet.strip(),
+            telephone=telephone.strip(),
+            role=role,
+            profil=profil,
+        )
+        affiliation = AffiliationEtablissement.objects.create(
+            utilisateur=utilisateur,
+            etablissement=etablissement,
+            role=role,
+            fonction_locale=fonction_locale.strip(),
+        )
+        _enregistrer_audit_api(
+            request,
+            etablissement,
+            "CREATION",
+            "comptes",
+            utilisateur.id,
+        )
+        return Response(
+            self._serialiser_utilisateur(utilisateur, etablissement, affiliation),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DetailUtilisateurTenantView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _obtenir_affiliation(self, request, id_etablissement, id_utilisateur):
+        etablissement = _obtenir_etablissement(id_etablissement)
+        _verifier_permission(request, etablissement, "comptes:gerer")
+        affiliation = get_object_or_404(
+            AffiliationEtablissement.objects.select_related("utilisateur"),
+            etablissement=etablissement,
+            utilisateur_id=id_utilisateur,
+        )
+        return etablissement, affiliation
+
+    @extend_schema(operation_id="modifierUtilisateurEtablissement", request=OpenApiTypes.OBJECT)
+    @transaction.atomic
+    def patch(self, request, id_etablissement: str, id_utilisateur: str):
+        etablissement, affiliation = self._obtenir_affiliation(
+            request,
+            id_etablissement,
+            id_utilisateur,
+        )
+        utilisateur = affiliation.utilisateur
+        if utilisateur.est_super_admin_plateforme:
+            raise PermissionDenied("Le compte Super-administrateur Plateforme est protégé.")
+        donnees = request.data
+        champs_autorises = {
+            "nom_complet",
+            "courriel",
+            "telephone",
+            "fonction_locale",
+            "id_role",
+            "mot_de_passe",
+            "est_actif",
+            "double_facteur_actif",
+            "doit_changer_mot_de_passe",
+            "tentatives_connexion_echouees",
+            "verrouille_jusqua",
+        }
+        inconnus = set(donnees) - champs_autorises
+        if inconnus:
+            raise ValidationError({"champs": "Un ou plusieurs champs ne peuvent pas être modifiés."})
+
+        if "nom_complet" in donnees:
+            nom_complet = donnees["nom_complet"]
+            if not isinstance(nom_complet, str) or len(nom_complet.strip()) < 2:
+                raise ValidationError({"nom_complet": "Le nom complet est invalide."})
+            utilisateur.nom_complet = nom_complet.strip()
+        if "courriel" in donnees:
+            courriel = donnees["courriel"]
+            if not isinstance(courriel, str):
+                raise ValidationError({"courriel": "L’adresse courriel est invalide."})
+            try:
+                validate_email(courriel)
+            except DjangoValidationError as erreur:
+                raise ValidationError({"courriel": "L’adresse courriel est invalide."}) from erreur
+            if Utilisateur.objects.filter(courriel__iexact=courriel.strip()).exclude(pk=utilisateur.pk).exists():
+                raise ValidationError({"courriel": "Cette adresse courriel est déjà utilisée."})
+            utilisateur.courriel = courriel.strip()
+        if "telephone" in donnees:
+            telephone = donnees["telephone"]
+            if not isinstance(telephone, str):
+                raise ValidationError({"telephone": "Le téléphone est invalide."})
+            utilisateur.telephone = telephone.strip()
+        if "fonction_locale" in donnees:
+            fonction = donnees["fonction_locale"]
+            if not isinstance(fonction, str):
+                raise ValidationError({"fonction_locale": "La fonction est invalide."})
+            affiliation.fonction_locale = fonction.strip()
+        if "id_role" in donnees:
+            role = donnees["id_role"]
+            if not isinstance(role, str) or role not in RoleUtilisateur.values or role == "SUPER_ADMIN":
+                raise ValidationError({"id_role": "Le rôle demandé ne peut pas être attribué."})
+            affiliation.role = role
+            utilisateur.role = role
+
+        profil = dict(utilisateur.profil or {})
+        for champ in (
+            "double_facteur_actif",
+            "doit_changer_mot_de_passe",
+            "tentatives_connexion_echouees",
+            "verrouille_jusqua",
+        ):
+            if champ in donnees:
+                valeur = donnees[champ]
+                if champ in {"double_facteur_actif", "doit_changer_mot_de_passe"} and not isinstance(
+                    valeur, bool
+                ):
+                    raise ValidationError({champ: "Cette valeur doit être booléenne."})
+                if champ == "tentatives_connexion_echouees" and (
+                    not isinstance(valeur, int) or valeur < 0
+                ):
+                    raise ValidationError({champ: "Le nombre de tentatives est invalide."})
+                if champ == "verrouille_jusqua" and valeur is not None and not isinstance(valeur, str):
+                    raise ValidationError({champ: "La date de verrouillage est invalide."})
+                profil[champ] = donnees[champ]
+        if "est_actif" in donnees:
+            if not isinstance(donnees["est_actif"], bool):
+                raise ValidationError({"est_actif": "Le statut du compte est invalide."})
+            autres_affiliations = AffiliationEtablissement.objects.filter(
+                utilisateur=utilisateur
+            ).exclude(etablissement=etablissement)
+            if autres_affiliations.exists():
+                raise ValidationError(
+                    {"est_actif": "Ce compte est multi-établissements; sa suspension globale est refusée."}
+                )
+            utilisateur.is_active = donnees["est_actif"]
+        if "mot_de_passe" in donnees:
+            mot_de_passe = donnees["mot_de_passe"]
+            if not isinstance(mot_de_passe, str) or len(mot_de_passe) < 8:
+                raise ValidationError({"mot_de_passe": "Le mot de passe doit contenir au moins 8 caractères."})
+            utilisateur.set_password(mot_de_passe)
+            profil["mot_de_passe_mis_a_jour_le"] = timezone.now().date().isoformat()
+            profil["tentatives_connexion_echouees"] = 0
+            profil["verrouille_jusqua"] = None
+
+        utilisateur.profil = profil
+        utilisateur.save()
+        affiliation.save()
+        _enregistrer_audit_api(
+            request,
+            etablissement,
+            "MODIFICATION",
+            "comptes",
+            utilisateur.id,
+        )
+        return Response(
+            ListeUtilisateursTenantView._serialiser_utilisateur(
+                utilisateur,
+                etablissement,
+                affiliation,
             )
-        return Response(utilisateurs)
+        )
+
+    @extend_schema(operation_id="retirerUtilisateurEtablissement", responses={204: None})
+    @transaction.atomic
+    def delete(self, request, id_etablissement: str, id_utilisateur: str):
+        etablissement, affiliation = self._obtenir_affiliation(
+            request,
+            id_etablissement,
+            id_utilisateur,
+        )
+        utilisateur = affiliation.utilisateur
+        if utilisateur.id == request.user.id:
+            raise PermissionDenied("Vous ne pouvez pas retirer votre propre compte de l’établissement.")
+        if utilisateur.est_super_admin_plateforme:
+            raise PermissionDenied("Le compte Super-administrateur Plateforme est protégé.")
+        affiliation.delete()
+        if not utilisateur.affiliations.exists():
+            utilisateur.is_active = False
+            utilisateur.save(update_fields=("is_active",))
+        _enregistrer_audit_api(
+            request,
+            etablissement,
+            "SUPPRESSION",
+            "comptes",
+            utilisateur.id,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class JournalAuditTenantView(APIView):

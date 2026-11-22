@@ -9,6 +9,7 @@
 - Endpoint de lecture des utilisateurs d’un établissement, réservé à `comptes:gerer` et limité aux affiliations du tenant demandé; le frontend en mode API n’utilise plus le catalogue d’utilisateurs de démonstration dans l’écran RBAC.
 - Consultation du journal d’audit serveur tenant-scopé, avec instantané du nom et du rôle de l’acteur enregistré à chaque action API; migration `0003` ajoutée et lecture chargée au changement d’établissement.
 - Mise à jour API des paramètres et du statut d’un établissement avec permission `parametres:gerer`; le frontend n’affiche le succès qu’après la réponse serveur.
+- Gestion API des comptes de l’établissement : création, modification, rôle, 2FA, mot de passe, déverrouillage, suspension locale et retrait. Les comptes multi-établissements ne peuvent pas être globalement suspendus depuis un tenant.
 - Tests couvrant JWT, refus d’accès, frontières de tenant, restrictions parentales, CRUD et import de démonstration.
 - Aucun fichier existant supprimé. Les mots de passe de démonstration ne sont pas importés comme mots de passe Django.
 

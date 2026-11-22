@@ -371,6 +371,79 @@ class TestsApiMultitenant(TestCase):
         )
         self.assertEqual(reponse_interdite.status_code, 403)
 
+    def test_creation_modification_et_retrait_compte_tenant(self):
+        base = f"/api/etablissements/{self.etablissement.id}/utilisateurs/"
+        creation = self.client.post(
+            base,
+            {
+                "nom_complet": "Nouvel utilisateur",
+                "courriel": "nouvel.utilisateur@example.org",
+                "telephone": "+509 3700-0000",
+                "id_role": "SCOLARITE",
+                "fonction_locale": "Agent de scolarité",
+                "mot_de_passe": "MotDePasseSolide-2026",
+                "double_facteur_actif": True,
+                "doit_changer_mot_de_passe": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(creation.status_code, 201)
+        utilisateur = Utilisateur.objects.get(courriel="nouvel.utilisateur@example.org")
+        self.assertTrue(utilisateur.check_password("MotDePasseSolide-2026"))
+        self.assertNotIn("mot_de_passe", creation.json())
+        self.assertEqual(creation.json()["mot_de_passe_demo"], "")
+
+        modification = self.client.patch(
+            f"{base}{utilisateur.id}/",
+            {
+                "id_role": "ADMIN_ETAB",
+                "fonction_locale": "Administrateur",
+                "doit_changer_mot_de_passe": False,
+            },
+            format="json",
+        )
+        self.assertEqual(modification.status_code, 200)
+        self.assertEqual(modification.json()["affiliations"][0]["id_role"], "ADMIN_ETAB")
+        self.assertFalse(modification.json()["doit_changer_mot_de_passe"])
+
+        retrait = self.client.delete(f"{base}{utilisateur.id}/")
+        self.assertEqual(retrait.status_code, 204)
+        self.assertFalse(
+            AffiliationEtablissement.objects.filter(
+                utilisateur=utilisateur,
+                etablissement=self.etablissement,
+            ).exists()
+        )
+
+    def test_gestion_compte_refuse_la_suspension_globale_multitenant(self):
+        compte_multi = Utilisateur.objects.create_user(
+            courriel="compte.multi@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Compte multi",
+            role="ADMIN_ETAB",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=compte_multi,
+            etablissement=self.etablissement,
+            role="SCOLARITE",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=compte_multi,
+            etablissement=self.autre_etablissement,
+            role="SCOLARITE",
+        )
+
+        reponse = self.client.patch(
+            f"/api/etablissements/{self.etablissement.id}/utilisateurs/{compte_multi.id}/",
+            {"est_actif": False},
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 400)
+        compte_multi.refresh_from_db()
+        self.assertTrue(compte_multi.is_active)
+
     def test_modification_etablissement_est_autorisee_et_tenant_scopee(self):
         modification = self.client.patch(
             f"/api/etablissements/{self.etablissement.id}/",

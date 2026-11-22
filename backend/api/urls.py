@@ -5,6 +5,7 @@ from api.tenant_views import (
     CollectionTenantView,
     DetailEtablissementTenantView,
     DetailEnregistrementTenantView,
+    DetailUtilisateurTenantView,
     JournalAuditTenantView,
     ListeEtablissementsView,
     ListeUtilisateursTenantView,
@@ -27,6 +28,11 @@ urlpatterns = [
         "etablissements/<str:id_etablissement>/utilisateurs/",
         ListeUtilisateursTenantView.as_view(),
         name="utilisateurs-etablissement",
+    ),
+    path(
+        "etablissements/<str:id_etablissement>/utilisateurs/<str:id_utilisateur>/",
+        DetailUtilisateurTenantView.as_view(),
+        name="detail-utilisateur-etablissement",
     ),
     path(
         "etablissements/<str:id_etablissement>/audit/",

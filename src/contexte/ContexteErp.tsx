@@ -6116,6 +6116,46 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       double_facteur_actif: boolean;
       doit_changer_mot_de_passe?: boolean;
     }) => {
+      if (SOURCE_API) {
+        void requeteApi<CompteUtilisateur>(
+          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/`,
+          {
+            method: 'POST',
+            body: {
+              nom_complet: saisie.nom_complet,
+              courriel: saisie.courriel,
+              telephone: saisie.telephone,
+              id_role: saisie.id_role,
+              fonction_locale: saisie.fonction_locale,
+              mot_de_passe: saisie.mot_de_passe_demo,
+              double_facteur_actif: saisie.double_facteur_actif,
+              doit_changer_mot_de_passe: saisie.doit_changer_mot_de_passe ?? false,
+            },
+          }
+        )
+          .then((nouvel_utilisateur) => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              utilisateurs: [nouvel_utilisateur, ...precedent.utilisateurs],
+            }));
+            ajouter_toast({
+              titre: `Compte créé : ${nouvel_utilisateur.nom_complet}`,
+              description: `Accès ${ROLES[saisie.id_role].libelle} activé.`,
+              variante: 'success',
+            });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Création du compte impossible',
+              description:
+                erreur instanceof Error
+                  ? erreur.message
+                  : 'Le serveur n’a pas pu créer ce compte.',
+              variante: 'error',
+            });
+          });
+        return;
+      }
       const initiales =
         saisie.nom_complet
           .trim()
@@ -6183,6 +6223,29 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         fonction_locale?: string;
       }
     ) => {
+      if (SOURCE_API) {
+        void requeteApi<CompteUtilisateur>(
+          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+          { method: 'PATCH', body: modifications }
+        )
+          .then((utilisateur_api) => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              utilisateurs: precedent.utilisateurs.map((utilisateur) =>
+                utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
+              ),
+            }));
+            ajouter_toast({ titre: 'Compte utilisateur mis à jour', variante: 'success' });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Compte non modifié',
+              description: erreur instanceof Error ? erreur.message : 'Modification refusée.',
+              variante: 'error',
+            });
+          });
+        return;
+      }
       definir_etat((precedent) => ({
         ...precedent,
         utilisateurs: precedent.utilisateurs.map((u) => {
@@ -6236,6 +6299,29 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         });
         return false;
       }
+      if (SOURCE_API) {
+        void requeteApi<null>(
+          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+          { method: 'DELETE' }
+        )
+          .then(() => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              utilisateurs: precedent.utilisateurs.filter(
+                (utilisateur) => utilisateur.id !== id_utilisateur
+              ),
+            }));
+            ajouter_toast({ titre: 'Compte retiré de l’établissement', variante: 'info' });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Retrait du compte impossible',
+              description: erreur instanceof Error ? erreur.message : 'Opération refusée.',
+              variante: 'error',
+            });
+          });
+        return true;
+      }
       definir_etat((precedent) => ({
         ...precedent,
         utilisateurs: precedent.utilisateurs
@@ -6272,6 +6358,32 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const mettre_a_jour_role_utilisateur = useCallback(
     (id_utilisateur: string, id_role: IdentifiantRole) => {
+      if (SOURCE_API) {
+        void requeteApi<CompteUtilisateur>(
+          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+          { method: 'PATCH', body: { id_role } }
+        )
+          .then((utilisateur_api) => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              utilisateurs: precedent.utilisateurs.map((utilisateur) =>
+                utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
+              ),
+            }));
+            ajouter_toast({
+              titre: `Rôle mis à jour : ${ROLES[id_role].libelle_court}`,
+              variante: 'success',
+            });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Rôle non modifié',
+              description: erreur instanceof Error ? erreur.message : 'Modification refusée.',
+              variante: 'error',
+            });
+          });
+        return;
+      }
       definir_etat((precedent) => ({
         ...precedent,
         utilisateurs: precedent.utilisateurs.map((u) => {
@@ -6314,6 +6426,34 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         });
         return;
       }
+      if (SOURCE_API) {
+        const utilisateur_cible = etat.utilisateurs.find(
+          (utilisateur) => utilisateur.id === id_utilisateur
+        );
+        if (!utilisateur_cible) return;
+        const est_actif = utilisateur_cible.est_actif === false;
+        void requeteApi<CompteUtilisateur>(
+          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+          { method: 'PATCH', body: { est_actif } }
+        )
+          .then((utilisateur_api) => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              utilisateurs: precedent.utilisateurs.map((utilisateur) =>
+                utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
+              ),
+            }));
+            ajouter_toast({ titre: 'Statut du compte modifié', variante: 'info' });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Statut du compte non modifié',
+              description: erreur instanceof Error ? erreur.message : 'Action refusée.',
+              variante: 'error',
+            });
+          });
+        return;
+      }
       definir_etat((precedent) => ({
         ...precedent,
         utilisateurs: precedent.utilisateurs.map((u) =>
@@ -6327,6 +6467,34 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const basculer_2fa_utilisateur = useCallback(
     (id_utilisateur: string) => {
+      if (SOURCE_API) {
+        const utilisateur_cible = etat.utilisateurs.find(
+          (utilisateur) => utilisateur.id === id_utilisateur
+        );
+        if (!utilisateur_cible) return;
+        const double_facteur_actif = !utilisateur_cible.double_facteur_actif;
+        void requeteApi<CompteUtilisateur>(
+          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+          { method: 'PATCH', body: { double_facteur_actif } }
+        )
+          .then((utilisateur_api) => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              utilisateurs: precedent.utilisateurs.map((utilisateur) =>
+                utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
+              ),
+            }));
+            ajouter_toast({ titre: 'Politique 2FA mise à jour', variante: 'success' });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Politique 2FA non modifiée',
+              description: erreur instanceof Error ? erreur.message : 'Action refusée.',
+              variante: 'error',
+            });
+          });
+        return;
+      }
       definir_etat((precedent) => ({
         ...precedent,
         utilisateurs: precedent.utilisateurs.map((u) =>
@@ -6354,6 +6522,44 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           variante: 'warning',
         });
         return false;
+      }
+      if (SOURCE_API) {
+        void requeteApi<CompteUtilisateur>(
+          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+          {
+            method: 'PATCH',
+            body: {
+              mot_de_passe: nouveau_mot_de_passe.trim(),
+              doit_changer_mot_de_passe:
+                options?.doit_changer_mot_de_passe ?? false,
+              tentatives_connexion_echouees: 0,
+              verrouille_jusqua: null,
+            },
+          }
+        )
+          .then((utilisateur_api) => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              utilisateurs: precedent.utilisateurs.map((utilisateur) =>
+                utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
+              ),
+            }));
+            ajouter_toast({
+              titre: 'Mot de passe réinitialisé',
+              description: utilisateur_api.doit_changer_mot_de_passe
+                ? 'L’utilisateur devra définir un nouveau mot de passe à sa prochaine connexion.'
+                : 'Le nouveau mot de passe est actif immédiatement.',
+              variante: 'success',
+            });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Mot de passe non réinitialisé',
+              description: erreur instanceof Error ? erreur.message : 'Action refusée.',
+              variante: 'error',
+            });
+          });
+        return true;
       }
       const aujourdhui = new Date().toISOString().slice(0, 10);
       const utilisateur_cible = etat.utilisateurs.find((u) => u.id === id_utilisateur);
@@ -6405,6 +6611,39 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   const deverrouiller_compte_utilisateur = useCallback(
     (id_utilisateur: string) => {
       const utilisateur_cible = etat.utilisateurs.find((u) => u.id === id_utilisateur);
+      if (SOURCE_API) {
+        void requeteApi<CompteUtilisateur>(
+          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+          {
+            method: 'PATCH',
+            body: {
+              tentatives_connexion_echouees: 0,
+              verrouille_jusqua: null,
+            },
+          }
+        )
+          .then((utilisateur_api) => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              utilisateurs: precedent.utilisateurs.map((utilisateur) =>
+                utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
+              ),
+            }));
+            ajouter_toast({
+              titre: 'Compte déverrouillé',
+              description: `${utilisateur_api.nom_complet} peut se reconnecter immédiatement.`,
+              variante: 'success',
+            });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Compte non déverrouillé',
+              description: erreur instanceof Error ? erreur.message : 'Action refusée.',
+              variante: 'error',
+            });
+          });
+        return;
+      }
       definir_etat((precedent) => ({
         ...precedent,
         utilisateurs: precedent.utilisateurs.map((u) =>
