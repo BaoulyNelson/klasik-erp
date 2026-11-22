@@ -284,6 +284,13 @@ const COLLECTIONS_RELATIONNELLES_TYPED = new Set([
   'communications',
   'notifications',
   'articles_actualites',
+  'livres_bibliotheque',
+  'emprunts_bibliotheque',
+  'visites_infirmerie',
+  'incidents_discipline',
+  'inventaire',
+  'prets_materiels',
+  'anciens',
 ]);
 
 async function charger_collection_api(

@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     "finances",
     "documents",
     "communication",
+    "services_annexes",
     "donnees",
     "api",
 ]
