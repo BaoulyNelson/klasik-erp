@@ -19,8 +19,9 @@ La phase est **partielle** : l’API conserve les formes JSON existantes dans un
 - `manage.py check` : réussi.
 - `manage.py makemigrations --check --dry-run` : aucune migration manquante.
 - `manage.py test api` : tests d’authentification, CRUD, permissions et isolation multitenant réussis.
-- Après ajout de l’API RBAC : 20 tests Django passent, y compris les refus d’un rôle sans autorisation et d’un établissement non affilié.
-- Tests complémentaires de visibilité des comptes, confidentialité des mots de passe et absence d’affiliation d’un autre tenant dans la réponse.
+- Après ajout des API RBAC et de liste des utilisateurs : 21 tests Django passent, y compris les refus d’un rôle sans autorisation et d’un établissement non affilié.
+- Le test de visibilité des comptes confirme que les affiliations d’un autre tenant et tout mot de passe sont absents de la réponse.
+- Parcours navigateur en mode API : connexion démo via JWT et affichage des données de l’API vérifiés; les endpoints de permissions et d’utilisateurs du tenant répondent 200. Les 403 sur les collections sans droit sont attendus et sont filtrés côté frontend.
 - `seed_demo` : 5 établissements, 14 utilisateurs et 494 enregistrements métier; l’idempotence est vérifiée par test.
 - `npm run lint` et `npm run build` : réussis; l’avertissement de taille du bundle Vite (>500 Ko) subsiste.
 
