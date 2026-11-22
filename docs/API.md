@@ -2,18 +2,30 @@
 
 La documentation OpenAPI interactive est publiée en développement sur `/api/docs/`; le schéma JSON est accessible sur `/api/schema/`.
 
-## Endpoints disponibles — phase 1
+## Endpoints disponibles
 
 | Méthode | URL | Authentification | Description |
 |---|---|---|---|
 | `GET` | `/api/sante/` | Publique | État du service et message français. |
 | `POST` | `/api/auth/token/` | Publique | Connexion par `courriel` et `password`; renvoie `access` et `refresh`. |
 | `POST` | `/api/auth/token/refresh/` | Jeton de renouvellement | Renouvelle le jeton d’accès; les refresh tokens sont rotatifs et révoqués après rotation. |
+| `POST` | `/api/auth/token/blacklist/` | JWT d’accès | Révoque un jeton de renouvellement. |
+| `POST` | `/api/auth/demo/` | Publique, développement seulement | Délivre un JWT de démonstration pour un utilisateur actif; répond 404 lorsque `DEBUG=false`. |
 | `GET` | `/api/auth/me/` | JWT d’accès | Profil courant sérialisé avec `id`, `courriel`, `nom_complet`, `telephone`, `role`, `est_super_admin_plateforme`, `est_actif`. |
+| `GET` | `/api/etablissements/` | JWT d’accès | Établissements affiliés à l’utilisateur; le super-administrateur plateforme peut les lister tous. |
+| `GET` | `/api/etablissements/{id_etablissement}/donnees/{collection}/` | JWT d’accès et permission de lecture | Liste paginée (50 par défaut, `page_size` de 1 à 100), filtre exact par champ, `search` dans les données et tri `id` / `-id`. |
+| `POST` | `/api/etablissements/{id_etablissement}/donnees/{collection}/` | JWT d’accès et permission d’écriture | Crée une donnée de la collection, avec identifiant `id`; le serveur renseigne `id_etablissement`. |
+| `GET` | `/api/etablissements/{id_etablissement}/donnees/{collection}/{id}/` | JWT d’accès et permission de lecture | Lit un enregistrement tenant-scopé. |
+| `PATCH` | `/api/etablissements/{id_etablissement}/donnees/{collection}/{id}/` | JWT d’accès et permission d’écriture | Met à jour un enregistrement sans permettre de modifier son identifiant ou son tenant. |
+| `DELETE` | `/api/etablissements/{id_etablissement}/donnees/{collection}/{id}/` | JWT d’accès et permission d’écriture | Supprime un enregistrement autorisé et conserve une trace d’audit. |
 | `GET` | `/api/schema/` | Selon configuration OpenAPI | Schéma OpenAPI. |
 | `GET` | `/api/docs/` | Selon configuration OpenAPI | Interface Swagger. |
 
-Les réponses des serializers conservent le `snake_case` du contrat TypeScript existant. Les endpoints métier tenant-scopés, filtres et opérations CRUD seront documentés lors de la phase 2; aucun endpoint de données métier n’est encore déclaré.
+Collections métier exposées : unités, éléments, enseignants, apprenants, inscriptions, paiements, notes, présences, emplois du temps, calendrier, documents, stages, dépenses, paie, communications, cahiers de textes, soutenances, bibliothèque, infirmerie, incidents, services, inventaire, prêts matériel, anciens, Campus numérique/LMS, actualités, RGPD, messagerie, badges, imports, audit et notifications. Chaque ressource applique la permission configurée pour son domaine; les rôles Parent/Apprenant sont filtrés aux apprenants liés et l’Enseignant à ses unités/éléments assignés. La liste blanche des noms de collections et les permissions sont définies côté serveur.
+
+Les réponses conservent le `snake_case` du contrat TypeScript existant. Chaque objet métier conserve sa forme JSON actuelle. Le stockage actuel utilise une table commune de données JSON reliée à l’établissement; les contraintes relationnelles propres à chaque domaine restent à renforcer avant de déclarer la parité complète.
+
+Le client React en mode `VITE_SOURCE_DONNEES=api` récupère les pages autorisées pour l’établissement actif, tente un rafraîchissement JWT après une réponse 401 et synchronise les changements locaux par POST/PATCH/DELETE. Un refus 403 sur une collection signifie que le rôle n’a pas accès à cette collection; les autres erreurs sont présentées à l’utilisateur.
 
 ## Erreurs
 

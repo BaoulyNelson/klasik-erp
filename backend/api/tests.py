@@ -1,8 +1,13 @@
 import json
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.management import call_command
+from django.test import TestCase, override_settings
+from io import StringIO
 from rest_framework.test import APIClient
+from comptes.models import AffiliationEtablissement
+from donnees.models import EnregistrementMetier
+from etablissements.models import Etablissement
 
 Utilisateur = get_user_model()
 
@@ -58,6 +63,27 @@ class TestsAuthentificationApi(TestCase):
         self.assertEqual(reponse.status_code, 401)
         self.assertIn("message", reponse.json())
 
+    def test_connexion_demo_est_disponible_uniquement_en_developpement(self):
+        with override_settings(DEBUG=True):
+            reponse = self.client.post(
+                "/api/auth/demo/",
+                {"id_utilisateur": self.utilisateur.id},
+                format="json",
+            )
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIn("access", reponse.json())
+        self.assertIn("refresh", reponse.json())
+
+        with override_settings(DEBUG=False):
+            reponse_production = self.client.post(
+                "/api/auth/demo/",
+                {"id_utilisateur": self.utilisateur.id},
+                format="json",
+            )
+
+        self.assertEqual(reponse_production.status_code, 404)
+
     def test_jeton_de_renouvellement_est_rotatif(self):
         reponse_jetons = self.client.post(
             "/api/auth/token/",
@@ -84,3 +110,199 @@ class TestsAuthentificationApi(TestCase):
 
         self.assertEqual(reponse.status_code, 200)
         self.assertEqual(json.loads(reponse.content)["openapi"], "3.0.3")
+
+
+class TestsApiMultitenant(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.etablissement = Etablissement.objects.create(
+            id="tenant-scolaire-a",
+            code="ECOLE-A",
+            nom="École A",
+            nom_court="A",
+            type="SCOLAIRE",
+        )
+        self.autre_etablissement = Etablissement.objects.create(
+            id="tenant-scolaire-b",
+            code="ECOLE-B",
+            nom="École B",
+            nom_court="B",
+            type="SCOLAIRE",
+        )
+        self.utilisateur = Utilisateur.objects.create_user(
+            courriel="gestionnaire@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Gestionnaire de test",
+            role="ADMIN_ETAB",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=self.etablissement,
+            role="ADMIN_ETAB",
+        )
+        self.client.force_authenticate(self.utilisateur)
+
+    def ajouter_apprenant(self, tenant, identifiant):
+        return EnregistrementMetier.objects.create(
+            etablissement=tenant,
+            collection="apprenants",
+            id_objet=identifiant,
+            donnees={
+                "id": identifiant,
+                "id_etablissement": tenant.id,
+                "prenom": "Élève",
+                "nom": identifiant,
+                "id_unite": "unite-a",
+            },
+        )
+
+    def test_liste_et_detail_restent_dans_le_tenant_autorise(self):
+        self.ajouter_apprenant(self.etablissement, "a-1")
+        self.ajouter_apprenant(self.autre_etablissement, "b-1")
+
+        liste = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/donnees/apprenants/"
+        )
+        autre_tenant = self.client.get(
+            f"/api/etablissements/{self.autre_etablissement.id}/donnees/apprenants/"
+        )
+        detail_autre_tenant = self.client.get(
+            f"/api/etablissements/{self.autre_etablissement.id}/donnees/apprenants/b-1/"
+        )
+
+        self.assertEqual(liste.status_code, 200)
+        self.assertEqual([ligne["id"] for ligne in liste.json()["results"]], ["a-1"])
+        self.assertEqual(autre_tenant.status_code, 403)
+        self.assertEqual(detail_autre_tenant.status_code, 403)
+
+    def test_creation_refuse_un_id_etablissement_falsifie(self):
+        reponse = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/donnees/apprenants/",
+            {
+                "id": "apprenant-injecte",
+                "id_etablissement": self.autre_etablissement.id,
+                "prenom": "Élève",
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(EnregistrementMetier.objects.count(), 0)
+
+    def test_auditeur_ne_peut_pas_modifier_les_donnees(self):
+        AffiliationEtablissement.objects.filter(utilisateur=self.utilisateur).update(role="AUDITEUR")
+
+        reponse = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/donnees/apprenants/",
+            {"id": "apprenant-interdit", "prenom": "Élève"},
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 403)
+        self.assertEqual(EnregistrementMetier.objects.count(), 0)
+
+    def test_parent_ne_voit_que_les_apprenants_associes(self):
+        self.ajouter_apprenant(self.etablissement, "enfant-lie")
+        self.ajouter_apprenant(self.etablissement, "enfant-autre")
+        self.utilisateur.profil = {"ids_apprenants_lies": ["enfant-lie"]}
+        self.utilisateur.save(update_fields=("profil",))
+        AffiliationEtablissement.objects.filter(utilisateur=self.utilisateur).update(role="PARENT")
+
+        reponse = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/donnees/apprenants/"
+        )
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual([ligne["id"] for ligne in reponse.json()["results"]], ["enfant-lie"])
+
+    def test_creation_modification_et_suppression_api(self):
+        base = f"/api/etablissements/{self.etablissement.id}/donnees/apprenants/"
+        donnees = {
+            "id": "apprenant-crud",
+            "id_etablissement": self.etablissement.id,
+            "prenom": "Élève",
+            "nom": "Initial",
+            "id_unite": "unite-a",
+        }
+        creation = self.client.post(base, donnees, format="json")
+        modification = self.client.patch(
+            f"{base}apprenant-crud/",
+            {"nom": "Modifié"},
+            format="json",
+        )
+        suppression = self.client.delete(f"{base}apprenant-crud/")
+
+        self.assertEqual(creation.status_code, 201)
+        self.assertEqual(modification.status_code, 200)
+        self.assertEqual(modification.json()["nom"], "Modifié")
+        self.assertEqual(suppression.status_code, 204)
+        self.assertFalse(
+            EnregistrementMetier.objects.filter(
+                etablissement=self.etablissement,
+                collection="apprenants",
+                id_objet="apprenant-crud",
+            ).exists()
+        )
+
+    def test_connexion_demo_refuse_un_etablissement_non_affilie(self):
+        with override_settings(DEBUG=True):
+            reponse = self.client.post(
+                "/api/auth/demo/",
+                {
+                    "id_utilisateur": self.utilisateur.id,
+                    "id_etablissement": self.autre_etablissement.id,
+                },
+                format="json",
+            )
+
+        self.assertEqual(reponse.status_code, 403)
+
+
+class TestsCommandeSeedDemo(TestCase):
+    def test_seed_est_idempotent_et_ne_cree_pas_de_mot_de_passe_demo(self):
+        call_command("seed_demo", stdout=StringIO())
+        nombre_initial = EnregistrementMetier.objects.count()
+
+        call_command("seed_demo", stdout=StringIO())
+
+        self.assertEqual(Etablissement.objects.count(), 5)
+        self.assertEqual(Utilisateur.objects.count(), 14)
+        self.assertEqual(EnregistrementMetier.objects.count(), nombre_initial)
+        self.assertGreater(nombre_initial, 0)
+        self.assertTrue(
+            all(
+                not utilisateur.profil.get("mot_de_passe_demo")
+                for utilisateur in Utilisateur.objects.all()
+            )
+        )
+
+    def test_session_demo_seedee_accede_aux_etablissements_et_collections(self):
+        call_command("seed_demo", stdout=StringIO())
+        client = APIClient()
+        super_admin = Utilisateur.objects.get(est_super_admin_plateforme=True)
+        etablissement = Etablissement.objects.first()
+
+        with override_settings(DEBUG=True):
+            connexion = client.post(
+                "/api/auth/demo/",
+                {
+                    "id_utilisateur": super_admin.id,
+                    "id_etablissement": etablissement.id,
+                },
+                format="json",
+            )
+
+        self.assertEqual(connexion.status_code, 200)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {connexion.json()['access']}")
+        profil = client.get("/api/auth/me/")
+        etablissements = client.get("/api/etablissements/")
+        apprenants = client.get(
+            f"/api/etablissements/{etablissement.id}/donnees/apprenants/"
+        )
+
+        self.assertEqual(profil.status_code, 200)
+        self.assertEqual(profil.json()["id"], super_admin.id)
+        self.assertEqual(etablissements.status_code, 200)
+        self.assertEqual(len(etablissements.json()), 5)
+        self.assertEqual(apprenants.status_code, 200)
+        self.assertGreater(apprenants.json()["count"], 0)

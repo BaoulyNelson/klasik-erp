@@ -52,6 +52,7 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     courriel = models.EmailField(max_length=191, unique=True)
     nom_complet = models.CharField(max_length=120)
     telephone = models.CharField(max_length=64, blank=True)
+    profil = models.JSONField(default=dict)
     role = models.CharField(
         max_length=32,
         choices=RoleUtilisateur.choices,
@@ -81,3 +82,55 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     @property
     def est_actif(self) -> bool:
         return self.is_active
+
+
+class AffiliationEtablissement(models.Model):
+    utilisateur = models.ForeignKey(
+        "comptes.Utilisateur",
+        on_delete=models.CASCADE,
+        related_name="affiliations",
+    )
+    etablissement = models.ForeignKey(
+        "etablissements.Etablissement",
+        on_delete=models.CASCADE,
+        related_name="affiliations",
+        db_column="id_etablissement",
+    )
+    role = models.CharField(max_length=32, choices=RoleUtilisateur.choices)
+    fonction_locale = models.CharField(max_length=191, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("utilisateur", "etablissement"),
+                name="comptes_unique_affiliation",
+            )
+        ]
+        ordering = ["etablissement__nom", "utilisateur__courriel"]
+        verbose_name = "affiliation d’établissement"
+        verbose_name_plural = "affiliations d’établissement"
+
+    def __str__(self) -> str:
+        return f"{self.utilisateur.courriel} — {self.etablissement.code} ({self.role})"
+
+
+class SurchargePermissions(models.Model):
+    etablissement = models.ForeignKey(
+        "etablissements.Etablissement",
+        on_delete=models.CASCADE,
+        related_name="surcharges_permissions",
+        db_column="id_etablissement",
+    )
+    role = models.CharField(max_length=32, choices=RoleUtilisateur.choices)
+    permissions = models.JSONField(default=list)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("etablissement", "role"),
+                name="comptes_unique_surcharge_role_tenant",
+            )
+        ]
+        ordering = ["etablissement__nom", "role"]
+        verbose_name = "surcharge de permissions"
+        verbose_name_plural = "surcharges de permissions"

@@ -12,10 +12,10 @@ API REST Django 5 + Django REST Framework. Le backend ne rend pas les pages de l
 Depuis la racine du projet :
 
 ```powershell
-py -3 -m venv backend\.venv
-backend\.venv\Scripts\python -m pip install -r backend\requirements.txt
+py -3 -m venv backend\venv
+backend\venv\Scripts\python -m pip install -r backend\requirements.txt
 if (-not (Test-Path backend\.env)) { Copy-Item backend\.env.example backend\.env }
-.\backend\.venv\Scripts\Activate.ps1
+.\backend\venv\Scripts\Activate
 backend\.venv\Scripts\python backend\manage.py migrate
 backend\.venv\Scripts\python backend\manage.py runserver 127.0.0.1:8000
 ```
@@ -30,12 +30,13 @@ Le fichier `backend\.env` est local et ignoré par Git. Remplacez `DJANGO_SECRET
 
 - `python backend/manage.py check`
 - `python backend/manage.py migrate`
+- `python backend/manage.py seed_demo`
 - `python backend/manage.py test api`
 - `python backend/manage.py createsuperuser`
 
-Les scripts `npm run backend:check`, `npm run backend:migrate` et `npm run backend:test` lancent les commandes avec le Python disponible dans le `PATH`. `npm run dev:api` démarre l’API; dans un second terminal `npm run dev` démarre React. Vite relaie `/api/` vers `http://127.0.0.1:8000`.
+Les scripts `npm run backend:check`, `npm run backend:migrate`, `npm run backend:seed` et `npm run backend:test` lancent les commandes avec le Python disponible dans le `PATH`. Activez d’abord l’environnement `backend\.venv`. `npm run dev:api` démarre l’API; dans un second terminal `npm run dev` démarre React. Vite relaie `/api/` vers `http://127.0.0.1:8000`.
 
-Les endpoints du socle et leurs contrats sont décrits dans [`../docs/API.md`](../docs/API.md). La commande `seed_demo` et les endpoints métier seront ajoutés aux phases suivantes; ils ne sont pas encore disponibles.
+Les endpoints du socle, les permissions et les collections tenant-scopées sont décrits dans [`../docs/API.md`](../docs/API.md). `seed_demo` charge les fixtures des modules de données; les mots de passe de démonstration sont supprimés et les comptes importés n’ont pas de mot de passe utilisable. Créez un compte d’administration avec `createsuperuser` pour gérer les comptes serveur.
 
 ## Déploiement
 

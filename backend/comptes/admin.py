@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from comptes.models import Utilisateur
+from comptes.models import AffiliationEtablissement, SurchargePermissions, Utilisateur
 
 
 @admin.register(Utilisateur)
@@ -28,3 +28,16 @@ class AdministrationUtilisateur(UserAdmin):
     )
     readonly_fields = ("last_login", "date_joined", "modifie_le")
     filter_horizontal = ("groups", "user_permissions")
+
+
+@admin.register(AffiliationEtablissement)
+class AdministrationAffiliationEtablissement(admin.ModelAdmin):
+    list_display = ("utilisateur", "etablissement", "role", "fonction_locale")
+    list_filter = ("role", "etablissement")
+    search_fields = ("utilisateur__courriel", "etablissement__nom")
+
+
+@admin.register(SurchargePermissions)
+class AdministrationSurchargePermissions(admin.ModelAdmin):
+    list_display = ("etablissement", "role")
+    list_filter = ("role", "etablissement")
