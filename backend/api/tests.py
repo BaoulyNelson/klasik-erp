@@ -10,6 +10,12 @@ from rest_framework.test import APIClient
 from comptes.models import AffiliationEtablissement, SurchargePermissions
 from donnees.models import EnregistrementMetier, EntreeAuditApi, FichierTeleverse
 from etablissements.models import Etablissement
+from scolarite.models import (
+    Apprenant,
+    ElementPedagogique,
+    InscriptionApprenant,
+    UniteAcademique,
+)
 
 Utilisateur = get_user_model()
 
@@ -504,6 +510,169 @@ class TestsApiMultitenant(TestCase):
             f"/api/etablissements/{self.etablissement.id}/audit/"
         )
         self.assertEqual(role_sans_audit.status_code, 403)
+
+
+class TestsContratsScolariteRelationnelle(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.etablissement = Etablissement.objects.create(
+            id="tenant-scolarite-rel",
+            code="SCOL-REL",
+            nom="Établissement scolaire relationnel",
+            nom_court="Scolaire",
+            type="SCOLAIRE",
+            code_pays="HT",
+            nom_pays="Haïti",
+            devise_defaut="HTG",
+        )
+        self.autre_etablissement = Etablissement.objects.create(
+            id="tenant-scolarite-autre",
+            code="SCOL-AUTRE",
+            nom="Autre établissement",
+            nom_court="Autre",
+            type="SCOLAIRE",
+        )
+        self.utilisateur = Utilisateur.objects.create_user(
+            courriel="scolarite.relationnelle@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Gestionnaire scolarité",
+            role="SCOLARITE",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=self.etablissement,
+            role="SCOLARITE",
+        )
+        self.client.force_authenticate(self.utilisateur)
+
+        self.unite = UniteAcademique.objects.create(
+            id="unite-rel",
+            etablissement=self.etablissement,
+            code="REL-1",
+            nom="Classe relationnelle",
+            categorie="Secondaire",
+            niveau_ou_duree="9ème",
+            capacite=35,
+            frais_scolarite_htg=12000,
+            frais_inscription_htg=1500,
+            repartition_facturation="Mensuelle",
+            responsable_nom="Responsable test",
+        )
+        self.apprenant = Apprenant.objects.create(
+            id="apprenant-rel",
+            etablissement=self.etablissement,
+            unite=self.unite,
+            matricule="REL-2026-001",
+            prenom="Ada",
+            nom="Test",
+            sexe="F",
+            date_naissance="2012-04-10",
+            lieu_naissance="Port-au-Prince",
+            telephone="+509 3700-0001",
+            adresse="Delmas",
+            libelle_niveau="9ème",
+            date_inscription="2026-09-01",
+            indice_etape=3,
+            statut="ACTIF",
+            total_du_htg=12000,
+            total_paye_htg=3000,
+            statut_paiement="PARTIEL",
+            moyenne_generale=8,
+            taux_assiduite=95,
+            dossier_complet=True,
+        )
+        self.inscription = InscriptionApprenant.objects.create(
+            id="inscription-rel",
+            etablissement=self.etablissement,
+            apprenant=self.apprenant,
+            unite=self.unite,
+            numero_inscription="INS-REL-001",
+            annee_academique="2026–2027",
+            libelle_periode="1er Trimestre",
+            libelle_niveau="9ème",
+            type_inscription="NOUVELLE",
+            date_inscription="2026-09-01",
+            statut_inscription="VALIDEE",
+            montant_brut_htg=13500,
+            pourcentage_bourse=10,
+            montant_net_htg=12150,
+        )
+
+    def test_contrat_unite_represente_le_wire_format_snake_case(self):
+        reponse = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/unites/{self.unite.id}/"
+        )
+        self.assertEqual(reponse.status_code, 200)
+        donnees = reponse.json()
+        self.assertEqual(donnees["id"], "unite-rel")
+        self.assertEqual(donnees["id_etablissement"], self.etablissement.id)
+        self.assertIn("frais_scolarite_htg", donnees)
+        self.assertIn("niveau_ou_duree", donnees)
+        self.assertEqual(donnees["frais_scolarite_htg"], 12000)
+
+    def test_contrat_apprenant_represente_relations_et_echeancier(self):
+        reponse = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/apprenants/{self.apprenant.id}/"
+        )
+        self.assertEqual(reponse.status_code, 200)
+        donnees = reponse.json()
+        self.assertEqual(donnees["id_unite"], "unite-rel")
+        self.assertEqual(donnees["id_etablissement"], self.etablissement.id)
+        self.assertEqual(donnees["statut_paiement"], "PARTIEL")
+        self.assertEqual(donnees["tuteurs"], [])
+        self.assertEqual(donnees["echeancier"], [])
+
+    def test_isolation_typed_et_action_annulation_inscription(self):
+        autre_unite = UniteAcademique.objects.create(
+            id="unite-autre",
+            etablissement=self.autre_etablissement,
+            code="AUTRE-1",
+            nom="Autre unité",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        autre_apprenant = Apprenant.objects.create(
+            id="apprenant-autre",
+            etablissement=self.autre_etablissement,
+            unite=autre_unite,
+            matricule="AUTRE-001",
+            prenom="Hors",
+            nom="Tenant",
+            sexe="M",
+            indice_etape=1,
+        )
+        autre_inscription = InscriptionApprenant.objects.create(
+            id="inscription-autre",
+            etablissement=self.autre_etablissement,
+            apprenant=autre_apprenant,
+            unite=autre_unite,
+            numero_inscription="INS-AUTRE",
+            annee_academique="2026–2027",
+            libelle_periode="Année",
+            libelle_niveau="Année",
+            type_inscription="NOUVELLE",
+            date_inscription="2026-09-01",
+        )
+
+        liste = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/inscriptions/"
+        )
+        interdite = self.client.get(
+            f"/api/etablissements/{self.autre_etablissement.id}/inscriptions/"
+        )
+        annulation = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/inscriptions/{self.inscription.id}/annuler/",
+            {"motif_statut": "Dossier incomplet"},
+            format="json",
+        )
+
+        self.assertEqual(liste.status_code, 200)
+        self.assertEqual([ligne["id"] for ligne in liste.json()["results"]], ["inscription-rel"])
+        self.assertEqual(interdite.status_code, 403)
+        self.assertEqual(annulation.status_code, 200)
+        self.assertEqual(annulation.json()["statut_inscription"], "ANNULEE")
+        autre_inscription.refresh_from_db()
+        self.assertEqual(autre_inscription.statut_inscription, "VALIDEE")
 
 
 @override_settings(

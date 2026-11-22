@@ -15,5 +15,6 @@ urlpatterns = [
     path("api/auth/me/", ProfilCourantView.as_view(), name="profil-courant"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema-api"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema-api"), name="documentation-api"),
+    path("api/", include("scolarite.urls")),
     path("api/", include("api.urls")),
 ]

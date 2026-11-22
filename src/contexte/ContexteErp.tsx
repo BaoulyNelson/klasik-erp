@@ -272,9 +272,15 @@ async function charger_collection_api(
   let page = 1;
   while (true) {
     let reponse: { results: unknown[]; next: number | null };
+    const collection_typed = ['unites', 'elements', 'apprenants', 'inscriptions'].includes(
+      collection
+    );
+    const chemin_collection = collection_typed
+      ? `/etablissements/${encodeURIComponent(id_etablissement)}/${collection}/`
+      : `/etablissements/${encodeURIComponent(id_etablissement)}/donnees/${collection}/`;
     try {
       reponse = await requeteApi<{ results: unknown[]; next: number | null }>(
-        `/etablissements/${encodeURIComponent(id_etablissement)}/donnees/${collection}/?page=${page}`
+        `${chemin_collection}?page=${page}&page_size=100`
       );
     } catch (erreur: unknown) {
       if (erreur instanceof ErreurApi && erreur.statut === 403) return [];
@@ -2445,15 +2451,26 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         for (const [cle_ligne, ancienne] of anciennes) {
           if (nouvelles.has(cle_ligne)) continue;
           const ligne = obtenir_reference(ancienne);
+          const collection_typed = ['unites', 'elements', 'apprenants', 'inscriptions'].includes(
+            collection
+          );
+          const base = collection_typed
+            ? `/etablissements/${encodeURIComponent(ligne.tenant)}/${collection}/`
+            : `/etablissements/${encodeURIComponent(ligne.tenant)}/donnees/${collection}/`;
           await requeteApi<null>(
-            `/etablissements/${encodeURIComponent(ligne.tenant)}/donnees/${collection}/${encodeURIComponent(ligne.id)}/`,
+            `${base}${encodeURIComponent(ligne.id)}/`,
             { method: 'DELETE' }
           );
         }
         for (const [cle_ligne, nouvelle] of nouvelles) {
           const ancienne = anciennes.get(cle_ligne);
           const donnee = obtenir_reference(nouvelle);
-          const base = `/etablissements/${encodeURIComponent(donnee.tenant)}/donnees/${collection}/`;
+          const collection_typed = ['unites', 'elements', 'apprenants', 'inscriptions'].includes(
+            collection
+          );
+          const base = collection_typed
+            ? `/etablissements/${encodeURIComponent(donnee.tenant)}/${collection}/`
+            : `/etablissements/${encodeURIComponent(donnee.tenant)}/donnees/${collection}/`;
           if (!ancienne) {
             await requeteApi<unknown>(base, { method: 'POST', body: nouvelle });
           } else if (JSON.stringify(ancienne) !== JSON.stringify(nouvelle)) {

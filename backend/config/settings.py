@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "comptes",
     "etablissements",
+    "scolarite",
     "donnees",
     "api",
 ]

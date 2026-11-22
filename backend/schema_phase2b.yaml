@@ -1,0 +1,2422 @@
+openapi: 3.0.3
+info:
+  title: API Klasik ERP
+  version: 1.0.0
+  description: API REST de gestion éducative multi-établissements.
+paths:
+  /api/auth/demo/:
+    post:
+      operationId: obtenirSessionDemonstration
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/auth/me/:
+    get:
+      operationId: api_auth_me_retrieve
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfilUtilisateur'
+          description: ''
+  /api/auth/token/:
+    post:
+      operationId: api_auth_token_create
+      description: |-
+        Takes a set of user credentials and returns an access and refresh JSON web
+        token pair to prove the authentication of those credentials.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenObtainPair'
+          description: ''
+  /api/auth/token/blacklist/:
+    post:
+      operationId: api_auth_token_blacklist_create
+      description: |-
+        Takes a token and blacklists it. Must be used with the
+        `rest_framework_simplejwt.token_blacklist` app installed.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenBlacklist'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenBlacklist'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenBlacklist'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenBlacklist'
+          description: ''
+  /api/auth/token/refresh/:
+    post:
+      operationId: api_auth_token_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/etablissements/:
+    get:
+      operationId: listerEtablissementsAccessibles
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EtablissementAccessible'
+          description: ''
+  /api/etablissements/{id_etablissement}/:
+    patch:
+      operationId: modifierConfigurationEtablissement
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/etablissements/{id_etablissement}/apprenants/:
+    get:
+      operationId: api_etablissements_apprenants_list
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: statut
+        schema:
+          type: string
+          enum:
+          - ACTIF
+          - DIPLOME
+          - EN_STAGE
+          - REDOUBLANT
+          - SUSPENDU
+        description: |-
+          * `ACTIF` - Actif
+          * `EN_STAGE` - En stage
+          * `DIPLOME` - Diplômé
+          * `SUSPENDU` - Suspendu
+          * `REDOUBLANT` - Redoublant
+      - in: query
+        name: statut_paiement
+        schema:
+          type: string
+          enum:
+          - A_JOUR
+          - EN_RETARD
+          - PARTIEL
+        description: |-
+          * `A_JOUR` - À jour
+          * `PARTIEL` - Partiel
+          * `EN_RETARD` - En retard
+      - in: query
+        name: unite
+        schema:
+          type: string
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedApprenantList'
+          description: ''
+    post:
+      operationId: api_etablissements_apprenants_create
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Apprenant'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Apprenant'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Apprenant'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Apprenant'
+          description: ''
+  /api/etablissements/{id_etablissement}/apprenants/{id}/:
+    get:
+      operationId: api_etablissements_apprenants_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Apprenant'
+          description: ''
+    put:
+      operationId: api_etablissements_apprenants_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Apprenant'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Apprenant'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Apprenant'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Apprenant'
+          description: ''
+    patch:
+      operationId: api_etablissements_apprenants_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedApprenant'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedApprenant'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedApprenant'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Apprenant'
+          description: ''
+    delete:
+      operationId: api_etablissements_apprenants_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/etablissements/{id_etablissement}/audit/:
+    get:
+      operationId: listerJournalAuditEtablissement
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/etablissements/{id_etablissement}/donnees/{collection}/:
+    get:
+      operationId: listerDonneesEtablissement
+      description: Liste paginée des enregistrements visibles dans l’établissement
+        autorisé.
+      parameters:
+      - in: path
+        name: collection
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    post:
+      operationId: creerDonneeEtablissement
+      parameters:
+      - in: path
+        name: collection
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/etablissements/{id_etablissement}/donnees/{collection}/{id_objet}/:
+    get:
+      operationId: lireDonneeEtablissement
+      parameters:
+      - in: path
+        name: collection
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_objet
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    patch:
+      operationId: modifierDonneeEtablissement
+      parameters:
+      - in: path
+        name: collection
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_objet
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    delete:
+      operationId: supprimerDonneeEtablissement
+      parameters:
+      - in: path
+        name: collection
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_objet
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/etablissements/{id_etablissement}/elements/:
+    get:
+      operationId: api_etablissements_elements_list
+      parameters:
+      - in: query
+        name: id_enseignant
+        schema:
+          type: string
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: nature
+        schema:
+          type: string
+          enum:
+          - MATIERE
+          - MODULE_PRATIQUE
+          - MODULE_THEORIQUE
+          - UE
+        description: |-
+          * `MODULE_PRATIQUE` - Module pratique
+          * `MODULE_THEORIQUE` - Module théorique
+          * `MATIERE` - Matière
+          * `UE` - Unité d’enseignement
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: unite
+        schema:
+          type: string
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedElementPedagogiqueList'
+          description: ''
+    post:
+      operationId: api_etablissements_elements_create
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElementPedagogique'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ElementPedagogique'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ElementPedagogique'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElementPedagogique'
+          description: ''
+  /api/etablissements/{id_etablissement}/elements/{id}/:
+    get:
+      operationId: api_etablissements_elements_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElementPedagogique'
+          description: ''
+    put:
+      operationId: api_etablissements_elements_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElementPedagogique'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ElementPedagogique'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ElementPedagogique'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElementPedagogique'
+          description: ''
+    patch:
+      operationId: api_etablissements_elements_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedElementPedagogique'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedElementPedagogique'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedElementPedagogique'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElementPedagogique'
+          description: ''
+    delete:
+      operationId: api_etablissements_elements_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/etablissements/{id_etablissement}/fichiers/:
+    post:
+      operationId: televerserFichierEtablissement
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                fichier:
+                  type: string
+                  format: binary
+              required:
+              - fichier
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FichierTeleverse'
+          description: ''
+  /api/etablissements/{id_etablissement}/inscriptions/:
+    get:
+      operationId: api_etablissements_inscriptions_list
+      parameters:
+      - in: query
+        name: apprenant
+        schema:
+          type: string
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: statut_inscription
+        schema:
+          type: string
+          enum:
+          - ANNULEE
+          - ARCHIVEE
+          - VALIDEE
+        description: |-
+          * `VALIDEE` - Validée
+          * `ANNULEE` - Annulée
+          * `ARCHIVEE` - Archivée
+      - in: query
+        name: type_inscription
+        schema:
+          type: string
+          enum:
+          - NOUVELLE
+          - REINSCRIPTION
+        description: |-
+          * `NOUVELLE` - Nouvelle
+          * `REINSCRIPTION` - Réinscription
+      - in: query
+        name: unite
+        schema:
+          type: string
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedInscriptionApprenantList'
+          description: ''
+    post:
+      operationId: api_etablissements_inscriptions_create
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InscriptionApprenant'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/InscriptionApprenant'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InscriptionApprenant'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InscriptionApprenant'
+          description: ''
+  /api/etablissements/{id_etablissement}/inscriptions/{id}/:
+    get:
+      operationId: api_etablissements_inscriptions_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InscriptionApprenant'
+          description: ''
+    put:
+      operationId: api_etablissements_inscriptions_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InscriptionApprenant'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/InscriptionApprenant'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InscriptionApprenant'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InscriptionApprenant'
+          description: ''
+    patch:
+      operationId: api_etablissements_inscriptions_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedInscriptionApprenant'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedInscriptionApprenant'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedInscriptionApprenant'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InscriptionApprenant'
+          description: ''
+    delete:
+      operationId: api_etablissements_inscriptions_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/etablissements/{id_etablissement}/inscriptions/{id}/annuler/:
+    post:
+      operationId: api_etablissements_inscriptions_annuler_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InscriptionApprenant'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/InscriptionApprenant'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InscriptionApprenant'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InscriptionApprenant'
+          description: ''
+  /api/etablissements/{id_etablissement}/permissions/:
+    get:
+      operationId: listerPermissionsRoles
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    put:
+      operationId: modifierPermissionsRole
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModifierPermissionsRole'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ModifierPermissionsRole'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ModifierPermissionsRole'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/etablissements/{id_etablissement}/unites/:
+    get:
+      operationId: api_etablissements_unites_list
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUniteAcademiqueList'
+          description: ''
+    post:
+      operationId: api_etablissements_unites_create
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UniteAcademique'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UniteAcademique'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UniteAcademique'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UniteAcademique'
+          description: ''
+  /api/etablissements/{id_etablissement}/unites/{id}/:
+    get:
+      operationId: api_etablissements_unites_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UniteAcademique'
+          description: ''
+    put:
+      operationId: api_etablissements_unites_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UniteAcademique'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UniteAcademique'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UniteAcademique'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UniteAcademique'
+          description: ''
+    patch:
+      operationId: api_etablissements_unites_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUniteAcademique'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUniteAcademique'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUniteAcademique'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UniteAcademique'
+          description: ''
+    delete:
+      operationId: api_etablissements_unites_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/etablissements/{id_etablissement}/utilisateurs/:
+    get:
+      operationId: listerUtilisateursEtablissement
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    post:
+      operationId: creerUtilisateurEtablissement
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/etablissements/{id_etablissement}/utilisateurs/{id_utilisateur}/:
+    patch:
+      operationId: modifierUtilisateurEtablissement
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_utilisateur
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: retirerUtilisateurEtablissement
+      parameters:
+      - in: path
+        name: id_etablissement
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id_utilisateur
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/fichiers/{id_fichier}/:
+    get:
+      operationId: telechargerFichier
+      parameters:
+      - in: path
+        name: id_fichier
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+  /api/sante/:
+    get:
+      operationId: api_sante_retrieve
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReponseSante'
+          description: ''
+components:
+  schemas:
+    Apprenant:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        id_etablissement:
+          type: string
+          readOnly: true
+        matricule:
+          type: string
+          maxLength: 64
+        prenom:
+          type: string
+          maxLength: 191
+        nom:
+          type: string
+          maxLength: 191
+        sexe:
+          $ref: '#/components/schemas/SexeEnum'
+        date_naissance:
+          type: string
+          maxLength: 32
+        lieu_naissance:
+          type: string
+          maxLength: 191
+        telephone:
+          type: string
+          maxLength: 64
+        courriel:
+          type: string
+          format: email
+          maxLength: 191
+        adresse:
+          type: string
+          maxLength: 255
+        id_unite:
+          type: string
+          readOnly: true
+        libelle_niveau:
+          type: string
+          maxLength: 191
+        date_inscription:
+          type: string
+          maxLength: 32
+        indice_etape:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        statut:
+          $ref: '#/components/schemas/ApprenantStatutEnum'
+        total_du_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        total_paye_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        statut_paiement:
+          $ref: '#/components/schemas/StatutPaiementEnum'
+        moyenne_generale:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+        taux_assiduite:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        credits_acquis:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          nullable: true
+        credits_requis:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          nullable: true
+        pourcentage_bourse:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        nationalite:
+          type: string
+          maxLength: 100
+        mobilite_internationale:
+          type: boolean
+        reference_visa_passeport:
+          type: string
+          maxLength: 100
+        tuteurs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContactTuteur'
+          readOnly: true
+        entreprise_stage:
+          type: string
+          maxLength: 191
+        dossier_complet:
+          type: boolean
+        pieces_manquantes: {}
+        echeancier:
+          type: array
+          items:
+            $ref: '#/components/schemas/EcheancePaiement'
+          readOnly: true
+      required:
+      - echeancier
+      - id
+      - id_etablissement
+      - id_unite
+      - matricule
+      - nom
+      - prenom
+      - sexe
+      - tuteurs
+    ApprenantStatutEnum:
+      enum:
+      - ACTIF
+      - EN_STAGE
+      - DIPLOME
+      - SUSPENDU
+      - REDOUBLANT
+      type: string
+      description: |-
+        * `ACTIF` - Actif
+        * `EN_STAGE` - En stage
+        * `DIPLOME` - Diplômé
+        * `SUSPENDU` - Suspendu
+        * `REDOUBLANT` - Redoublant
+    ContactTuteur:
+      type: object
+      properties:
+        nom_complet:
+          type: string
+          maxLength: 191
+        lien_parente:
+          $ref: '#/components/schemas/LienParenteEnum'
+        telephone:
+          type: string
+          maxLength: 64
+        est_contact_urgence:
+          type: boolean
+        retrait_autorise:
+          type: boolean
+      required:
+      - lien_parente
+      - nom_complet
+      - telephone
+    EcheancePaiement:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        libelle:
+          type: string
+          maxLength: 191
+        date_echeance:
+          type: string
+          maxLength: 32
+        montant_du_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        montant_paye_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        statut:
+          $ref: '#/components/schemas/EcheancePaiementStatutEnum'
+      required:
+      - date_echeance
+      - id
+      - libelle
+    EcheancePaiementStatutEnum:
+      enum:
+      - PAYEE
+      - PARTIELLE
+      - A_PAYER
+      - EN_RETARD
+      type: string
+      description: |-
+        * `PAYEE` - Payée
+        * `PARTIELLE` - Partielle
+        * `A_PAYER` - À payer
+        * `EN_RETARD` - En retard
+    ElementPedagogique:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        id_etablissement:
+          type: string
+          readOnly: true
+        id_unite:
+          type: string
+          readOnly: true
+        code:
+          type: string
+          maxLength: 64
+        nom:
+          type: string
+          maxLength: 191
+        nature:
+          $ref: '#/components/schemas/NatureEnum'
+        coefficient_ou_credits:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        volume_horaire_total:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        id_enseignant:
+          type: string
+          maxLength: 128
+        libelle_periode:
+          type: string
+          maxLength: 191
+      required:
+      - code
+      - id
+      - id_etablissement
+      - id_unite
+      - nature
+      - nom
+    EtablissementAccessible:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        nom:
+          type: string
+        nom_court:
+          type: string
+        type:
+          type: string
+        statut:
+          type: string
+      required:
+      - code
+      - id
+      - nom
+      - nom_court
+      - statut
+      - type
+    FichierTeleverse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nom_fichier:
+          type: string
+        type_mime:
+          type: string
+        taille_octets:
+          type: integer
+        enregistre_le:
+          type: string
+          format: date-time
+      required:
+      - enregistre_le
+      - id
+      - nom_fichier
+      - taille_octets
+      - type_mime
+    InscriptionApprenant:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        id_etablissement:
+          type: string
+          readOnly: true
+        id_apprenant:
+          type: string
+          readOnly: true
+        numero_inscription:
+          type: string
+          maxLength: 64
+        annee_academique:
+          type: string
+          maxLength: 32
+        libelle_periode:
+          type: string
+          maxLength: 191
+        id_unite:
+          type: string
+          readOnly: true
+        libelle_niveau:
+          type: string
+          maxLength: 191
+        type_inscription:
+          $ref: '#/components/schemas/TypeInscriptionEnum'
+        date_inscription:
+          type: string
+          maxLength: 32
+        statut_inscription:
+          $ref: '#/components/schemas/StatutInscriptionEnum'
+        montant_brut_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        pourcentage_bourse:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        montant_net_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        pieces_fournies: {}
+        option_cantine:
+          type: boolean
+        option_transport:
+          type: boolean
+        motif_statut:
+          type: string
+          maxLength: 255
+        observations:
+          type: string
+          maxLength: 1000
+        cree_le:
+          type: string
+          maxLength: 32
+        modifie_le:
+          type: string
+          maxLength: 32
+      required:
+      - annee_academique
+      - date_inscription
+      - id
+      - id_apprenant
+      - id_etablissement
+      - id_unite
+      - libelle_niveau
+      - libelle_periode
+      - numero_inscription
+      - type_inscription
+    LienParenteEnum:
+      enum:
+      - Père
+      - Mère
+      - Tuteur
+      - Tutrice
+      - Conjoint(e)
+      - Proche / Urgence
+      type: string
+      description: |-
+        * `Père` - Père
+        * `Mère` - Mère
+        * `Tuteur` - Tuteur
+        * `Tutrice` - Tutrice
+        * `Conjoint(e)` - Conjoint(e)
+        * `Proche / Urgence` - Proche / Urgence
+    ModifierPermissionsRole:
+      type: object
+      properties:
+        role:
+          $ref: '#/components/schemas/ModifierPermissionsRoleRoleEnum'
+        permissions:
+          type: array
+          items:
+            type: string
+      required:
+      - permissions
+      - role
+    ModifierPermissionsRoleRoleEnum:
+      enum:
+      - DIRECTEUR
+      - ADMIN_ETAB
+      - SCOLARITE
+      - ECONOME
+      - DIR_ETUDES
+      - ENSEIGNANT
+      - RESP_STAGES
+      - SERVICES_ANNEXES
+      - PARENT
+      - APPRENANT
+      - AUDITEUR
+      type: string
+      description: |-
+        * `DIRECTEUR` - DIRECTEUR
+        * `ADMIN_ETAB` - ADMIN_ETAB
+        * `SCOLARITE` - SCOLARITE
+        * `ECONOME` - ECONOME
+        * `DIR_ETUDES` - DIR_ETUDES
+        * `ENSEIGNANT` - ENSEIGNANT
+        * `RESP_STAGES` - RESP_STAGES
+        * `SERVICES_ANNEXES` - SERVICES_ANNEXES
+        * `PARENT` - PARENT
+        * `APPRENANT` - APPRENANT
+        * `AUDITEUR` - AUDITEUR
+    NatureEnum:
+      enum:
+      - MODULE_PRATIQUE
+      - MODULE_THEORIQUE
+      - MATIERE
+      - UE
+      type: string
+      description: |-
+        * `MODULE_PRATIQUE` - Module pratique
+        * `MODULE_THEORIQUE` - Module théorique
+        * `MATIERE` - Matière
+        * `UE` - Unité d’enseignement
+    PaginatedApprenantList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Apprenant'
+    PaginatedElementPedagogiqueList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ElementPedagogique'
+    PaginatedInscriptionApprenantList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/InscriptionApprenant'
+    PaginatedUniteAcademiqueList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UniteAcademique'
+    PatchedApprenant:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        id_etablissement:
+          type: string
+          readOnly: true
+        matricule:
+          type: string
+          maxLength: 64
+        prenom:
+          type: string
+          maxLength: 191
+        nom:
+          type: string
+          maxLength: 191
+        sexe:
+          $ref: '#/components/schemas/SexeEnum'
+        date_naissance:
+          type: string
+          maxLength: 32
+        lieu_naissance:
+          type: string
+          maxLength: 191
+        telephone:
+          type: string
+          maxLength: 64
+        courriel:
+          type: string
+          format: email
+          maxLength: 191
+        adresse:
+          type: string
+          maxLength: 255
+        id_unite:
+          type: string
+          readOnly: true
+        libelle_niveau:
+          type: string
+          maxLength: 191
+        date_inscription:
+          type: string
+          maxLength: 32
+        indice_etape:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        statut:
+          $ref: '#/components/schemas/ApprenantStatutEnum'
+        total_du_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        total_paye_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        statut_paiement:
+          $ref: '#/components/schemas/StatutPaiementEnum'
+        moyenne_generale:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+        taux_assiduite:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        credits_acquis:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          nullable: true
+        credits_requis:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,2})?$
+          nullable: true
+        pourcentage_bourse:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        nationalite:
+          type: string
+          maxLength: 100
+        mobilite_internationale:
+          type: boolean
+        reference_visa_passeport:
+          type: string
+          maxLength: 100
+        tuteurs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContactTuteur'
+          readOnly: true
+        entreprise_stage:
+          type: string
+          maxLength: 191
+        dossier_complet:
+          type: boolean
+        pieces_manquantes: {}
+        echeancier:
+          type: array
+          items:
+            $ref: '#/components/schemas/EcheancePaiement'
+          readOnly: true
+    PatchedElementPedagogique:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        id_etablissement:
+          type: string
+          readOnly: true
+        id_unite:
+          type: string
+          readOnly: true
+        code:
+          type: string
+          maxLength: 64
+        nom:
+          type: string
+          maxLength: 191
+        nature:
+          $ref: '#/components/schemas/NatureEnum'
+        coefficient_ou_credits:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        volume_horaire_total:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        id_enseignant:
+          type: string
+          maxLength: 128
+        libelle_periode:
+          type: string
+          maxLength: 191
+    PatchedInscriptionApprenant:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        id_etablissement:
+          type: string
+          readOnly: true
+        id_apprenant:
+          type: string
+          readOnly: true
+        numero_inscription:
+          type: string
+          maxLength: 64
+        annee_academique:
+          type: string
+          maxLength: 32
+        libelle_periode:
+          type: string
+          maxLength: 191
+        id_unite:
+          type: string
+          readOnly: true
+        libelle_niveau:
+          type: string
+          maxLength: 191
+        type_inscription:
+          $ref: '#/components/schemas/TypeInscriptionEnum'
+        date_inscription:
+          type: string
+          maxLength: 32
+        statut_inscription:
+          $ref: '#/components/schemas/StatutInscriptionEnum'
+        montant_brut_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        pourcentage_bourse:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        montant_net_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        pieces_fournies: {}
+        option_cantine:
+          type: boolean
+        option_transport:
+          type: boolean
+        motif_statut:
+          type: string
+          maxLength: 255
+        observations:
+          type: string
+          maxLength: 1000
+        cree_le:
+          type: string
+          maxLength: 32
+        modifie_le:
+          type: string
+          maxLength: 32
+    PatchedUniteAcademique:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        id_etablissement:
+          type: string
+          readOnly: true
+        code:
+          type: string
+          maxLength: 64
+        nom:
+          type: string
+          maxLength: 191
+        categorie:
+          type: string
+          maxLength: 191
+        niveau_ou_duree:
+          type: string
+          maxLength: 191
+        indication_horaire:
+          type: string
+          maxLength: 191
+        capacite:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        frais_scolarite_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        frais_inscription_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        repartition_facturation:
+          type: string
+          maxLength: 191
+        responsable_nom:
+          type: string
+          maxLength: 191
+    ProfilUtilisateur:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        courriel:
+          type: string
+          format: email
+          readOnly: true
+        nom_complet:
+          type: string
+          readOnly: true
+        telephone:
+          type: string
+          readOnly: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/ProfilUtilisateurRoleEnum'
+          readOnly: true
+        est_super_admin_plateforme:
+          type: boolean
+          readOnly: true
+        est_actif:
+          type: boolean
+          readOnly: true
+        affiliations:
+          readOnly: true
+        ids_apprenants_lies:
+          readOnly: true
+      required:
+      - affiliations
+      - courriel
+      - est_actif
+      - est_super_admin_plateforme
+      - id
+      - ids_apprenants_lies
+      - nom_complet
+      - role
+      - telephone
+    ProfilUtilisateurRoleEnum:
+      enum:
+      - SUPER_ADMIN
+      - DIRECTEUR
+      - ADMIN_ETAB
+      - SCOLARITE
+      - ECONOME
+      - DIR_ETUDES
+      - ENSEIGNANT
+      - RESP_STAGES
+      - SERVICES_ANNEXES
+      - PARENT
+      - APPRENANT
+      - AUDITEUR
+      type: string
+      description: |-
+        * `SUPER_ADMIN` - Super-administrateur Plateforme
+        * `DIRECTEUR` - Directeur / Recteur / Doyen
+        * `ADMIN_ETAB` - Administrateur de l’établissement
+        * `SCOLARITE` - Agent d’inscription / Scolarité
+        * `ECONOME` - Économe / Caissier / Comptable
+        * `DIR_ETUDES` - Directeur des études / Préfet
+        * `ENSEIGNANT` - Enseignant / Formateur / Chargé de cours
+        * `RESP_STAGES` - Responsable des stages
+        * `SERVICES_ANNEXES` - Bibliothécaire / Infirmier / Cantine
+        * `PARENT` - Parent / Tuteur
+        * `APPRENANT` - Apprenant / Élève / Étudiant
+        * `AUDITEUR` - Auditeur / Lecture seule
+    ReponseSante:
+      type: object
+      properties:
+        statut:
+          type: string
+        message:
+          type: string
+      required:
+      - message
+      - statut
+    SexeEnum:
+      enum:
+      - F
+      - M
+      type: string
+      description: |-
+        * `F` - F
+        * `M` - M
+    StatutInscriptionEnum:
+      enum:
+      - VALIDEE
+      - ANNULEE
+      - ARCHIVEE
+      type: string
+      description: |-
+        * `VALIDEE` - Validée
+        * `ANNULEE` - Annulée
+        * `ARCHIVEE` - Archivée
+    StatutPaiementEnum:
+      enum:
+      - A_JOUR
+      - PARTIEL
+      - EN_RETARD
+      type: string
+      description: |-
+        * `A_JOUR` - À jour
+        * `PARTIEL` - Partiel
+        * `EN_RETARD` - En retard
+    TokenBlacklist:
+      type: object
+      properties:
+        refresh:
+          type: string
+          writeOnly: true
+      required:
+      - refresh
+    TokenObtainPair:
+      type: object
+      properties:
+        courriel:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          writeOnly: true
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          readOnly: true
+      required:
+      - access
+      - courriel
+      - password
+      - refresh
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TypeInscriptionEnum:
+      enum:
+      - NOUVELLE
+      - REINSCRIPTION
+      type: string
+      description: |-
+        * `NOUVELLE` - Nouvelle
+        * `REINSCRIPTION` - Réinscription
+    UniteAcademique:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        id_etablissement:
+          type: string
+          readOnly: true
+        code:
+          type: string
+          maxLength: 64
+        nom:
+          type: string
+          maxLength: 191
+        categorie:
+          type: string
+          maxLength: 191
+        niveau_ou_duree:
+          type: string
+          maxLength: 191
+        indication_horaire:
+          type: string
+          maxLength: 191
+        capacite:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        frais_scolarite_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        frais_inscription_htg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        repartition_facturation:
+          type: string
+          maxLength: 191
+        responsable_nom:
+          type: string
+          maxLength: 191
+      required:
+      - categorie
+      - code
+      - id
+      - id_etablissement
+      - niveau_ou_duree
+      - nom
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
