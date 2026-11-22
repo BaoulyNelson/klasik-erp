@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -85,9 +86,29 @@ class ObtenirJetonsVerrouilleView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        courriel = str(request.data.get("courriel", "")).strip().lower()
+        identifiant = str(
+            request.data.get("identifiant", request.data.get("courriel", ""))
+        ).strip()
+        alias_superutilisateur = identifiant.casefold() in {
+            "superuser",
+            "superadmin",
+            "admin",
+        }
+        if alias_superutilisateur:
+            superutilisateurs = Utilisateur.objects.filter(is_active=True).filter(
+                Q(est_super_admin_plateforme=True) | Q(is_superuser=True)
+            )
+            utilisateur = (
+                superutilisateurs.first()
+                if superutilisateurs.count() == 1
+                else None
+            )
+        else:
+            utilisateur = Utilisateur.objects.filter(
+                courriel__iexact=identifiant
+            ).first()
+        courriel = utilisateur.courriel if utilisateur else identifiant.lower()
         mot_de_passe = str(request.data.get("password", ""))
-        utilisateur = Utilisateur.objects.filter(courriel__iexact=courriel).first()
         if utilisateur:
             verrouille_jusqua = utilisateur.profil.get("verrouille_jusqua")
             if verrouille_jusqua:

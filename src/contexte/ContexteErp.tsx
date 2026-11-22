@@ -2893,13 +2893,12 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
                 ['superuser', 'superadmin', 'admin'].includes(identifiant_normalise))
           );
           if (compte_demo) {
-            if (compte_demo.mot_de_passe_demo !== mot_de_passe) {
-              return { ok: false, erreur: 'Identifiants invalides.' };
+            if (compte_demo.mot_de_passe_demo === mot_de_passe) {
+              const id_etablissement =
+                compte_demo.affiliations[0]?.id_etablissement ?? undefined;
+              await connecterDemoApi(compte_demo.id, id_etablissement);
+              return await ouvrir_session_api(id_etablissement);
             }
-            const id_etablissement =
-              compte_demo.affiliations[0]?.id_etablissement ?? undefined;
-            await connecterDemoApi(compte_demo.id, id_etablissement);
-            return await ouvrir_session_api(id_etablissement);
           }
         }
         await connecterApi(identifiant, mot_de_passe);

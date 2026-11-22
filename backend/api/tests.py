@@ -134,6 +134,27 @@ class TestsAuthentificationApi(TestCase):
         self.assertEqual(reponse_profil.json()["courriel"], "test@example.org")
         self.assertEqual(reponse_profil.json()["role"], "ENSEIGNANT")
 
+    def test_connexion_superuser_par_identifiant_court(self):
+        superutilisateur = Utilisateur.objects.create_superuser(
+            "administrateur@example.org",
+            "MotDePasseSuperuser-2026",
+        )
+
+        reponse_jetons = self.client.post(
+            "/api/auth/token/",
+            {"courriel": "superuser", "password": "MotDePasseSuperuser-2026"},
+            format="json",
+        )
+
+        self.assertEqual(reponse_jetons.status_code, 200)
+        self.assertIn("access", reponse_jetons.json())
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {reponse_jetons.json()['access']}"
+        )
+        profil = self.client.get("/api/auth/me/")
+        self.assertEqual(profil.status_code, 200)
+        self.assertEqual(profil.json()["id"], str(superutilisateur.id))
+
     def test_connexion_refuse_un_mot_de_passe_invalide_en_francais(self):
         reponse = self.client.post(
             "/api/auth/token/",

@@ -56,6 +56,8 @@ L’interface est disponible à `http://localhost:3000/`, l’API à `http://127
 
 En mode API et en développement (`DJANGO_DEBUG=true`), l’écran garde ses comptes démo et l’API délivre un JWT pour le compte sélectionné. Ce mécanisme de démonstration est désactivé si `DEBUG=false`. Les connexions réelles utilisent courriel et mot de passe Django. Les comptes importés par `seed_demo` n’ont pas de mot de passe utilisable : un administrateur doit leur en définir un. La connexion Google et la récupération de mot de passe ne sont pas encore reliées à Django.
 
+Le mode `local` authentifie uniquement les comptes des données locales; il ne recherche pas les utilisateurs Django. Pour se connecter avec un compte Django (dont le superutilisateur), régler `VITE_SOURCE_DONNEES=api` puis redémarrer Vite et lancer l’API. En mode API, l’identifiant `superuser`/`superadmin` est accepté s’il existe un seul superutilisateur actif; sinon, utiliser son adresse courriel.
+
 ## Vérifications
 
 ```powershell
