@@ -21,5 +21,6 @@ urlpatterns = [
     path("api/", include("documents.urls")),
     path("api/", include("communication.urls")),
     path("api/", include("services_annexes.urls")),
+    path("api/", include("campus_numerique.urls")),
     path("api/", include("api.urls")),
 ]

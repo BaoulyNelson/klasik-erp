@@ -74,6 +74,7 @@ INSTALLED_APPS = [
     "documents",
     "communication",
     "services_annexes",
+    "campus_numerique",
     "donnees",
     "api",
 ]

@@ -46,6 +46,10 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/inventaire/` | JWT avec permission bibliothèque/matériel | Inventaire tenant-scopé. |
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/prets_materiels/` | JWT avec permission bibliothèque/matériel | Prêts matériels reliés aux articles. |
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/anciens/` | JWT avec permission services | Fiches des anciens élèves tenant-scopées. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/ressources_lms/` | JWT avec `campus_numerique:voir` | Ressources pédagogiques LMS reliées aux unités et éléments. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/devoirs_lms/` | JWT avec `campus_numerique:voir` / `pedagogie:noter` | Devoirs LMS tenant-scopés. |
+| `POST` | `/api/etablissements/{id_etablissement}/devoirs_lms/{id}/cloturer/` | JWT avec `pedagogie:noter` | Action métier clôturant un devoir. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/remises_devoirs_lms/` | JWT avec périmètre apprenant/enseignant | Remises de devoir tenant-scopées. |
 | `GET` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Liste les surcharges RBAC configurées dans l’établissement. |
 | `PUT` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Enregistre les permissions d’un rôle du tenant; le rôle `SUPER_ADMIN` ne peut pas être modifié. Chaque changement est inscrit dans le journal d’audit serveur. |
 | `GET` | `/api/etablissements/{id_etablissement}/utilisateurs/` | JWT et permission `comptes:gerer` | Liste les comptes affiliés à cet établissement et uniquement leur affiliation dans ce tenant; aucun mot de passe n’est renvoyé. |

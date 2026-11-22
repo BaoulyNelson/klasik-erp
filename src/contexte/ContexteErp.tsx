@@ -291,6 +291,9 @@ const COLLECTIONS_RELATIONNELLES_TYPED = new Set([
   'inventaire',
   'prets_materiels',
   'anciens',
+  'ressources_lms',
+  'devoirs_lms',
+  'remises_devoirs_lms',
 ]);
 
 async function charger_collection_api(
