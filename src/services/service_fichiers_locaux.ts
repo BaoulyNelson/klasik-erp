@@ -2,6 +2,8 @@
 // Permet aux enseignants et apprenants de déposer de vrais fichiers (PDF, DOCX, images, ZIP...)
 // sans saturer le quota limité de localStorage.
 
+import { requeteApi, requeteApiBinaire } from './clientApi';
+
 export interface FichierLocalStocke {
   id: string;
   nom_fichier: string;
@@ -15,6 +17,7 @@ const NOM_BASE_INDEXEDDB = 'klasik_erp_fichiers';
 const VERSION_BASE = 1;
 const NOM_MAGASIN = 'fichiers';
 const TAILLE_MAX_OCTETS = 25 * 1024 * 1024; // 25 Mo par fichier
+const SOURCE_API = import.meta.env.VITE_SOURCE_DONNEES === 'api';
 
 const memoire_repli = new Map<string, FichierLocalStocke>();
 
@@ -44,7 +47,10 @@ export function formater_taille_fichier(octets?: number): string {
   return `${(octets / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
-export async function enregistrer_fichier_local(fichier: File): Promise<{
+export async function enregistrer_fichier_local(
+  fichier: File,
+  id_etablissement?: string
+): Promise<{
   ok: boolean;
   erreur?: string;
   id_fichier_local?: string;
@@ -56,6 +62,33 @@ export async function enregistrer_fichier_local(fichier: File): Promise<{
     return {
       ok: false,
       erreur: `Le fichier « ${fichier.name} » dépasse la limite autorisée de 25 Mo.`,
+    };
+  }
+
+  if (SOURCE_API) {
+    if (!id_etablissement) {
+      return {
+        ok: false,
+        erreur: 'L’établissement actif est requis pour téléverser ce fichier.',
+      };
+    }
+    const corps = new FormData();
+    corps.append('fichier', fichier);
+    const resultat = await requeteApi<{
+      id: string;
+      nom_fichier: string;
+      type_mime: string;
+      taille_octets: number;
+    }>(`/etablissements/${encodeURIComponent(id_etablissement)}/fichiers/`, {
+      method: 'POST',
+      body: corps,
+    });
+    return {
+      ok: true,
+      id_fichier_local: resultat.id,
+      nom_fichier: resultat.nom_fichier,
+      type_mime: resultat.type_mime,
+      taille_octets: resultat.taille_octets,
     };
   }
 
@@ -95,6 +128,20 @@ export async function enregistrer_fichier_local(fichier: File): Promise<{
 }
 
 export async function lire_fichier_local(id_fichier: string): Promise<FichierLocalStocke | null> {
+  if (SOURCE_API) {
+    const resultat = await requeteApiBinaire(`/fichiers/${encodeURIComponent(id_fichier)}/`);
+    const fichier: FichierLocalStocke = {
+      id: id_fichier,
+      nom_fichier: resultat.nom_fichier,
+      type_mime: resultat.blob.type || 'application/octet-stream',
+      taille_octets: resultat.blob.size,
+      blob: resultat.blob,
+      enregistre_le: new Date().toISOString(),
+    };
+    memoire_repli.set(id_fichier, fichier);
+    return fichier;
+  }
+
   const en_memoire = memoire_repli.get(id_fichier);
   if (en_memoire) return en_memoire;
 

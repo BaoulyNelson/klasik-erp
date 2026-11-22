@@ -65,7 +65,7 @@ npm run backend:check
 npm run backend:test
 ```
 
-Le backend fournit JWT, profil courant, `/api/sante/`, OpenAPI, l’administration des utilisateurs, un magasin de données JSON tenant-scopé et la commande `seed_demo`. Le client en mode API charge les collections autorisées et synchronise leurs créations, modifications et suppressions. Les permissions filtrent les tenants et les périmètres Parent/Apprenant/Enseignant. Les modèles métier relationnels détaillés, la fédération Google, la récupération de mot de passe, les fichiers et la gestion API des comptes/établissements restent à terminer; voir les rapports de phase dans `docs/`.
+Le backend fournit JWT, profil courant, `/api/sante/`, OpenAPI, l’administration des utilisateurs, un magasin de données JSON tenant-scopé, la commande `seed_demo` et des endpoints protégés de téléversement/téléchargement (25 Mo maximum). Le client en mode API charge les collections autorisées, synchronise leurs créations, modifications et suppressions, et récupère les fichiers avec contrôle des droits côté serveur. Les permissions filtrent les tenants et les périmètres Parent/Apprenant/Enseignant. Les modèles métier relationnels détaillés, la fédération Google, la récupération de mot de passe et la gestion API complète des comptes/établissements restent à terminer; voir les rapports de phase dans `docs/`.
 
 ## Documentation
 
@@ -73,7 +73,7 @@ Le backend fournit JWT, profil courant, `/api/sante/`, OpenAPI, l’administrati
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) : architecture et matrice des permissions.
 - [`docs/HYPOTHESES.md`](docs/HYPOTHESES.md) : ambiguïtés et décisions à valider.
 - [`docs/API.md`](docs/API.md) : endpoints actuellement disponibles.
-- [`docs/RAPPORT_PHASE_2.md`](docs/RAPPORT_PHASE_2.md) et [`docs/RAPPORT_PHASE_3.md`](docs/RAPPORT_PHASE_3.md) : changements, vérifications et limites des phases réalisées.
+- [`docs/RAPPORT_PHASE_2.md`](docs/RAPPORT_PHASE_2.md), [`docs/RAPPORT_PHASE_3.md`](docs/RAPPORT_PHASE_3.md) et [`docs/RAPPORT_PHASE_5.md`](docs/RAPPORT_PHASE_5.md) : changements, vérifications et limites des phases réalisées.
 - [`backend/README.md`](backend/README.md) : installation et configuration Django.
 
 ## État de migration

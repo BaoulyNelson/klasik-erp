@@ -1,5 +1,6 @@
 from django.urls import path
 
+from api.file_views import LectureFichierView, TeleversementFichierTenantView
 from api.tenant_views import (
     CollectionTenantView,
     DetailEnregistrementTenantView,
@@ -8,6 +9,12 @@ from api.tenant_views import (
 
 urlpatterns = [
     path("etablissements/", ListeEtablissementsView.as_view(), name="liste-etablissements"),
+    path(
+        "etablissements/<str:id_etablissement>/fichiers/",
+        TeleversementFichierTenantView.as_view(),
+        name="televersement-fichier",
+    ),
+    path("fichiers/<uuid:id_fichier>/", LectureFichierView.as_view(), name="lecture-fichier"),
     path(
         "etablissements/<str:id_etablissement>/donnees/<str:collection>/",
         CollectionTenantView.as_view(),

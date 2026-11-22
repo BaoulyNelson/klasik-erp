@@ -18,6 +18,8 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `GET` | `/api/etablissements/{id_etablissement}/donnees/{collection}/{id}/` | JWT d’accès et permission de lecture | Lit un enregistrement tenant-scopé. |
 | `PATCH` | `/api/etablissements/{id_etablissement}/donnees/{collection}/{id}/` | JWT d’accès et permission d’écriture | Met à jour un enregistrement sans permettre de modifier son identifiant ou son tenant. |
 | `DELETE` | `/api/etablissements/{id_etablissement}/donnees/{collection}/{id}/` | JWT d’accès et permission d’écriture | Supprime un enregistrement autorisé et conserve une trace d’audit. |
+| `POST` | `/api/etablissements/{id_etablissement}/fichiers/` | JWT d’accès et droit de dépôt du rôle | Reçoit un fichier multipart (`fichier`), maximum 25 Mo; retourne son identifiant, son nom, son type MIME et sa taille. Le dépôt est actuellement autorisé aux enseignants disposant de `pedagogie:noter` et aux apprenants ayant accès au portail. |
+| `GET` | `/api/fichiers/{id_fichier}/` | JWT d’accès et fichier visible | Télécharge le fichier si l’utilisateur en est propriétaire ou si le fichier est référencé par un enregistrement accessible dans le périmètre de son rôle et de son établissement. Les fichiers inconnus ou non autorisés répondent 404. |
 | `GET` | `/api/schema/` | Selon configuration OpenAPI | Schéma OpenAPI. |
 | `GET` | `/api/docs/` | Selon configuration OpenAPI | Interface Swagger. |
 
@@ -26,6 +28,8 @@ Collections métier exposées : unités, éléments, enseignants, apprenants, in
 Les réponses conservent le `snake_case` du contrat TypeScript existant. Chaque objet métier conserve sa forme JSON actuelle. Le stockage actuel utilise une table commune de données JSON reliée à l’établissement; les contraintes relationnelles propres à chaque domaine restent à renforcer avant de déclarer la parité complète.
 
 Le client React en mode `VITE_SOURCE_DONNEES=api` récupère les pages autorisées pour l’établissement actif, tente un rafraîchissement JWT après une réponse 401 et synchronise les changements locaux par POST/PATCH/DELETE. Un refus 403 sur une collection signifie que le rôle n’a pas accès à cette collection; les autres erreurs sont présentées à l’utilisateur.
+
+Les fichiers envoyés sont stockés sous `MEDIA_ROOT` dans un chemin isolé par établissement. Le navigateur en mode API récupère les fichiers via l’endpoint protégé, et non depuis son cache local. Le mode local conserve le stockage IndexedDB existant.
 
 ## Erreurs
 

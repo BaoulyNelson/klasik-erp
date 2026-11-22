@@ -150,6 +150,36 @@ export async function requeteApi<T>(
   return contenu as T;
 }
 
+export async function requeteApiBinaire(
+  chemin: string,
+  signal?: AbortSignal
+): Promise<{ blob: Blob; nom_fichier: string }> {
+  const options: OptionsRequeteApi = { method: 'GET', signal };
+  const jeton = lire_jeton(CLE_JETON_ACCES);
+  let reponse = await fetch_json(chemin, options, jeton ?? undefined);
+  if (reponse.status === 401 && !chemin.startsWith('/auth/token/')) {
+    try {
+      const nouveau_jeton = await renouveler_jeton();
+      reponse = await fetch_json(chemin, options, nouveau_jeton);
+    } catch (erreur: unknown) {
+      if (erreur instanceof ErreurApi && erreur.statut === 401) notifier_deconnexion();
+      throw erreur;
+    }
+  }
+  if (!reponse.ok) {
+    const contenu = await lire_reponse(reponse);
+    if (reponse.status === 401) notifier_deconnexion();
+    throw new ErreurApi(message_erreur(contenu, reponse.status), reponse.status);
+  }
+  const disposition = reponse.headers.get('Content-Disposition') ?? '';
+  const nomUtf8 = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const nomAscii = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  const nom_fichier = nomUtf8
+    ? decodeURIComponent(nomUtf8)
+    : nomAscii ?? 'document';
+  return { blob: await reponse.blob(), nom_fichier };
+}
+
 export async function connecterApi(courriel: string, mot_de_passe: string): Promise<void> {
   const jetons = await requeteApi<JetonsApi>('/auth/token/', {
     method: 'POST',

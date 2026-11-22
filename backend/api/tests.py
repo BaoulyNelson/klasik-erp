@@ -2,11 +2,13 @@ import json
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from io import StringIO
+from unittest.mock import patch
 from rest_framework.test import APIClient
 from comptes.models import AffiliationEtablissement
-from donnees.models import EnregistrementMetier
+from donnees.models import EnregistrementMetier, FichierTeleverse
 from etablissements.models import Etablissement
 
 Utilisateur = get_user_model()
@@ -256,6 +258,148 @@ class TestsApiMultitenant(TestCase):
             )
 
         self.assertEqual(reponse.status_code, 403)
+
+
+@override_settings(
+    STORAGES={"default": {"BACKEND": "django.core.files.storage.InMemoryStorage"}}
+)
+class TestsFichiersTenant(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.etablissement = Etablissement.objects.create(
+            id="tenant-fichier-a",
+            code="FICHIER-A",
+            nom="Établissement A",
+            nom_court="A",
+            type="SCOLAIRE",
+        )
+        self.autre_etablissement = Etablissement.objects.create(
+            id="tenant-fichier-b",
+            code="FICHIER-B",
+            nom="Établissement B",
+            nom_court="B",
+            type="SCOLAIRE",
+        )
+        self.enseignant = Utilisateur.objects.create_user(
+            courriel="enseignant-fichier@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Enseignant fichier",
+            role="ENSEIGNANT",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.enseignant,
+            etablissement=self.etablissement,
+            role="ENSEIGNANT",
+        )
+        self.client.force_authenticate(self.enseignant)
+
+    def test_depot_telechargement_et_isolation_du_fichier(self):
+        fichier_envoye = SimpleUploadedFile(
+            "devoir.pdf",
+            b"contenu de test",
+            content_type="application/pdf",
+        )
+        depot = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/fichiers/",
+            {"fichier": fichier_envoye},
+            format="multipart",
+        )
+
+        self.assertEqual(depot.status_code, 201)
+        fichier_id = depot.json()["id"]
+        fichier_stocke = FichierTeleverse.objects.get(pk=fichier_id)
+        self.assertTrue(fichier_stocke.fichier.storage.exists(fichier_stocke.fichier.name))
+        self.assertEqual(str(fichier_stocke.proprietaire_id), str(self.enseignant.id))
+        telechargement_proprietaire = self.client.get(f"/api/fichiers/{fichier_id}/")
+        self.assertEqual(
+            telechargement_proprietaire.status_code,
+            200,
+            getattr(telechargement_proprietaire, "data", None),
+        )
+        self.assertEqual(
+            b"".join(telechargement_proprietaire.streaming_content),
+            b"contenu de test",
+        )
+        self.assertIn("attachment", telechargement_proprietaire["Content-Disposition"])
+
+        directeur = Utilisateur.objects.create_user(
+            courriel="directeur-fichier@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Directeur fichier",
+            role="DIRECTEUR",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=directeur,
+            etablissement=self.etablissement,
+            role="DIRECTEUR",
+        )
+        EnregistrementMetier.objects.create(
+            etablissement=self.etablissement,
+            collection="documents",
+            id_objet="document-avec-fichier",
+            donnees={
+                "titre": "Document partagé",
+                "pieces_jointes": [{"id_fichier_local": fichier_id}],
+            },
+        )
+        self.client.force_authenticate(directeur)
+        telechargement_partage = self.client.get(f"/api/fichiers/{fichier_id}/")
+        self.assertEqual(telechargement_partage.status_code, 200)
+        self.assertEqual(
+            b"".join(telechargement_partage.streaming_content),
+            b"contenu de test",
+        )
+
+        autre_utilisateur = Utilisateur.objects.create_user(
+            courriel="enseignant-autre@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Autre enseignant",
+            role="ENSEIGNANT",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=autre_utilisateur,
+            etablissement=self.autre_etablissement,
+            role="ENSEIGNANT",
+        )
+        self.client.force_authenticate(autre_utilisateur)
+        telechargement_interdit = self.client.get(f"/api/fichiers/{fichier_id}/")
+
+        self.assertEqual(telechargement_interdit.status_code, 404)
+
+    def test_depot_refuse_un_fichier_superieur_a_la_limite(self):
+        with patch("api.file_views.TAILLE_MAX_FICHIER", 3):
+            depot = self.client.post(
+                f"/api/etablissements/{self.etablissement.id}/fichiers/",
+                {
+                    "fichier": SimpleUploadedFile(
+                        "trop-grand.zip",
+                        b"1234",
+                        content_type="application/zip",
+                    )
+                },
+                format="multipart",
+            )
+
+        self.assertEqual(depot.status_code, 400)
+        self.assertEqual(FichierTeleverse.objects.count(), 0)
+
+    def test_role_sans_droit_de_depot_est_refuse(self):
+        AffiliationEtablissement.objects.filter(utilisateur=self.enseignant).update(
+            role="AUDITEUR"
+        )
+        depot = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/fichiers/",
+            {
+                "fichier": SimpleUploadedFile(
+                    "document.txt",
+                    b"contenu",
+                    content_type="text/plain",
+                )
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(depot.status_code, 403)
 
 
 class TestsCommandeSeedDemo(TestCase):

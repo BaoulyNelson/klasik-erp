@@ -536,7 +536,7 @@ export const VueCampusNumerique: React.FC = () => {
     definir_televersement_en_cours_devoir(true);
     const ajouts: PieceJointeDevoirLms[] = [];
     for (const fichier of Array.from(fichiers)) {
-      const res = await enregistrer_fichier_local(fichier);
+      const res = await enregistrer_fichier_local(fichier, etablissement_actif.id);
       if (!res.ok || !res.id_fichier_local) {
         ajouter_toast({
           titre: 'Fichier refusé',
@@ -588,7 +588,7 @@ export const VueCampusNumerique: React.FC = () => {
     definir_televersement_en_cours_apprenant(true);
     const ajouts: PieceJointeDevoirLms[] = [];
     for (const fichier of Array.from(fichiers)) {
-      const res = await enregistrer_fichier_local(fichier);
+      const res = await enregistrer_fichier_local(fichier, etablissement_actif.id);
       if (!res.ok || !res.id_fichier_local) {
         ajouter_toast({
           titre: 'Fichier refusé',
@@ -635,7 +635,7 @@ export const VueCampusNumerique: React.FC = () => {
   const gerer_televersement_fichier_ressource = async (fichiers: FileList | null) => {
     const fichier = fichiers?.[0];
     if (!fichier) return;
-    const res = await enregistrer_fichier_local(fichier);
+    const res = await enregistrer_fichier_local(fichier, etablissement_actif.id);
     if (!res.ok || !res.id_fichier_local) {
       ajouter_toast({
         titre: 'Fichier refusé',
