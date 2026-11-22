@@ -225,9 +225,9 @@ export const EcranConnexion: React.FC = () => {
     }
   };
 
-  const gerer_demande_reinitialisation = (evenement: React.FormEvent) => {
+  const gerer_demande_reinitialisation = async (evenement: React.FormEvent) => {
     evenement.preventDefault();
-    const resultat = demander_reinitialisation_mot_de_passe(identifiant_reinit);
+    const resultat = await demander_reinitialisation_mot_de_passe(identifiant_reinit);
     if (!resultat.ok) {
       definir_erreur_reinit(resultat.erreur ?? 'Impossible d’envoyer le code.');
       return;
@@ -238,13 +238,13 @@ export const EcranConnexion: React.FC = () => {
     definir_mode_reinitialisation('confirmation');
   };
 
-  const gerer_confirmation_reinitialisation = (evenement: React.FormEvent) => {
+  const gerer_confirmation_reinitialisation = async (evenement: React.FormEvent) => {
     evenement.preventDefault();
     if (nouveau_mot_de_passe_reinit !== confirmation_mot_de_passe_reinit) {
       definir_erreur_reinit('Les deux nouveaux mots de passe ne correspondent pas.');
       return;
     }
-    const resultat = confirmer_reinitialisation_mot_de_passe(
+    const resultat = await confirmer_reinitialisation_mot_de_passe(
       identifiant_reinit,
       code_otp_reinit,
       nouveau_mot_de_passe_reinit

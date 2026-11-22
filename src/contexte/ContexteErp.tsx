@@ -725,17 +725,17 @@ interface ValeurContexteErp {
     identifiant: string,
     mot_de_passe: string
   ) => Promise<{ ok: boolean; erreur?: string }>;
-  demander_reinitialisation_mot_de_passe: (identifiant: string) => {
+  demander_reinitialisation_mot_de_passe: (identifiant: string) => Promise<{
     ok: boolean;
     erreur?: string;
     cible_masquee?: string;
     otp_demo?: string;
-  };
+  }>;
   confirmer_reinitialisation_mot_de_passe: (
     identifiant: string,
     code_otp: string,
     nouveau_mot_de_passe: string
-  ) => { ok: boolean; erreur?: string };
+  ) => Promise<{ ok: boolean; erreur?: string }>;
   deconnecter: () => void;
   simuler_role_etablissement: (
     id_role: IdentifiantRole,
@@ -3039,9 +3039,38 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const demander_reinitialisation_mot_de_passe = useCallback(
-    (
+    async (
       identifiant: string
-    ): { ok: boolean; erreur?: string; cible_masquee?: string; otp_demo?: string } => {
+    ): Promise<{ ok: boolean; erreur?: string; cible_masquee?: string; otp_demo?: string }> => {
+      if (SOURCE_API) {
+        const courriel = identifiant.trim();
+        if (!courriel.includes('@')) {
+          return {
+            ok: false,
+            erreur: 'La réinitialisation en mode API nécessite l’adresse courriel du compte.',
+          };
+        }
+        try {
+          const resultat = await requeteApi<{ message: string; jeton_demo?: string }>(
+            '/auth/password/reset/',
+            { method: 'POST', body: { courriel } }
+          );
+          return {
+            ok: true,
+            cible_masquee: masquer_courriel_ou_telephone(courriel),
+            otp_demo: resultat.jeton_demo,
+          };
+        } catch (erreur: unknown) {
+          return {
+            ok: false,
+            erreur:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Impossible de traiter la demande de réinitialisation.',
+          };
+        }
+      }
+
       const trouve = trouver_utilisateur_par_identifiant(identifiant);
       if (!trouve) {
         return {
@@ -3090,11 +3119,33 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const confirmer_reinitialisation_mot_de_passe = useCallback(
-    (
+    async (
       identifiant: string,
       code_otp: string,
       nouveau_mot_de_passe: string
-    ): { ok: boolean; erreur?: string } => {
+    ): Promise<{ ok: boolean; erreur?: string }> => {
+      if (SOURCE_API) {
+        try {
+          await requeteApi('/auth/password/reset/confirm/', {
+            method: 'POST',
+            body: {
+              courriel: identifiant.trim(),
+              jeton: code_otp.trim(),
+              nouveau_mot_de_passe,
+            },
+          });
+          return { ok: true };
+        } catch (erreur: unknown) {
+          return {
+            ok: false,
+            erreur:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Impossible de réinitialiser le mot de passe.',
+          };
+        }
+      }
+
       const trouve = trouver_utilisateur_par_identifiant(identifiant);
       if (!trouve) {
         return { ok: false, erreur: 'Compte introuvable.' };

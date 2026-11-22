@@ -25,5 +25,5 @@
 
 - Chargement complet en mémoire pour certaines vues qui utilisent encore `COLLECTIONS_API` puis filtres frontend.
 - Synchronisation locale détaillée des créations complexes (relations imbriquées, pièces jointes).
-- Actions Google/mot de passe dans les écrans React restent à remplacer entièrement par les endpoints serveur.
+- La réinitialisation de mot de passe est branchée aux endpoints API et conserve l’écran/code à six chiffres; la connexion Google reste à remplacer entièrement côté API.
 - Playwright local/API, capture visuelle et matrice exhaustive des rôles restent à exécuter.
