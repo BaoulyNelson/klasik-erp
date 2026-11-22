@@ -114,6 +114,7 @@ class Command(BaseCommand):
             courriel = profil.get("courriel", "").strip().lower()
             if not courriel:
                 raise CommandError("Un compte de démonstration ne possède pas de courriel.")
+            profil["acces_demo_autorise"] = True
             role = (
                 RoleUtilisateur.SUPER_ADMIN
                 if profil.get("est_super_admin_plateforme")

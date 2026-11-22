@@ -24,6 +24,7 @@ import { obtenir_theme_etablissement } from '../../composants/interface/theme_et
 import { obtenir_libelle_role_etablissement, ROLES } from '../../configuration/roles_permissions';
 import { utiliserErp } from '../../contexte/ContexteErp';
 import { CompteUtilisateur, IdentifiantRole } from '../../modeles/erp';
+import { valider_politique_mot_de_passe } from '../../services/service_mots_de_passe';
 
 export const VueComptes: React.FC = () => {
   const {
@@ -49,12 +50,12 @@ export const VueComptes: React.FC = () => {
   const [telephone, definir_telephone] = useState('');
   const [id_role, definir_id_role] = useState<IdentifiantRole>('SCOLARITE');
   const [fonction_locale, definir_fonction_locale] = useState('');
-  const [mot_de_passe_demo, definir_mot_de_passe_demo] = useState('Demo2026!');
+  const [mot_de_passe_demo, definir_mot_de_passe_demo] = useState('');
   const [double_facteur_actif, definir_double_facteur_actif] = useState(true);
   const [changement_obligatoire_creation, definir_changement_obligatoire_creation] = useState(true);
 
   const [id_utilisateur_edition_mdp, definir_id_utilisateur_edition_mdp] = useState<string | null>(null);
-  const [nouveau_mot_de_passe, definir_nouveau_mot_de_passe] = useState('Demo2026!');
+  const [nouveau_mot_de_passe, definir_nouveau_mot_de_passe] = useState('');
   const [changement_obligatoire_reinit, definir_changement_obligatoire_reinit] = useState(true);
 
   const [utilisateur_en_edition, definir_utilisateur_en_edition] = useState<CompteUtilisateur | null>(null);
@@ -105,6 +106,15 @@ export const VueComptes: React.FC = () => {
   const gerer_creation_utilisateur = (evenement: React.FormEvent) => {
     evenement.preventDefault();
     if (!nom_complet.trim() || !courriel.trim()) return;
+    const politique_mot_de_passe = valider_politique_mot_de_passe(mot_de_passe_demo);
+    if (!politique_mot_de_passe.valide) {
+      ajouter_toast({
+        titre: 'Mot de passe non conforme',
+        description: politique_mot_de_passe.message,
+        variante: 'warning',
+      });
+      return;
+    }
     creer_utilisateur_etablissement({
       nom_complet,
       courriel,

@@ -280,22 +280,39 @@ class TestsAuthentificationApi(TestCase):
         self.assertEqual(reponse.status_code, 401)
         self.assertIn("message", reponse.json())
 
-    def test_connexion_demo_est_disponible_uniquement_en_developpement(self):
-        with override_settings(DEBUG=True):
-            reponse = self.client.post(
+    def test_connexion_demo_exige_opt_in_de_developpement_et_compte_seed(self):
+        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=False):
+            refusee_sans_opt_in = self.client.post(
                 "/api/auth/demo/",
                 {"id_utilisateur": self.utilisateur.id},
                 format="json",
             )
+        self.assertEqual(refusee_sans_opt_in.status_code, 404)
 
+        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=True):
+            refusee_compte_reel = self.client.post(
+                "/api/auth/demo/",
+                {"id_utilisateur": self.utilisateur.id},
+                format="json",
+            )
+        self.assertEqual(refusee_compte_reel.status_code, 404)
+
+        call_command("seed_demo", stdout=StringIO())
+        compte_demo = Utilisateur.objects.get(pk="usr-super")
+        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=True):
+            reponse = self.client.post(
+                "/api/auth/demo/",
+                {"id_utilisateur": compte_demo.id},
+                format="json",
+            )
         self.assertEqual(reponse.status_code, 200)
         self.assertIn("access", reponse.json())
         self.assertIn("refresh", reponse.json())
 
-        with override_settings(DEBUG=False):
+        with override_settings(DEBUG=False, DEMO_LOGIN_ENABLED=True):
             reponse_production = self.client.post(
                 "/api/auth/demo/",
-                {"id_utilisateur": self.utilisateur.id},
+                {"id_utilisateur": compte_demo.id},
                 format="json",
             )
 
@@ -465,7 +482,9 @@ class TestsApiMultitenant(TestCase):
         )
 
     def test_connexion_demo_refuse_un_etablissement_non_affilie(self):
-        with override_settings(DEBUG=True):
+        self.utilisateur.profil = {"acces_demo_autorise": True}
+        self.utilisateur.save(update_fields=["profil"])
+        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=True):
             reponse = self.client.post(
                 "/api/auth/demo/",
                 {
@@ -1630,6 +1649,12 @@ class TestsCommandeSeedDemo(TestCase):
                 for utilisateur in Utilisateur.objects.all()
             )
         )
+        self.assertTrue(
+            all(
+                utilisateur.profil.get("acces_demo_autorise")
+                for utilisateur in Utilisateur.objects.all()
+            )
+        )
 
     def test_session_demo_seedee_accede_aux_etablissements_et_collections(self):
         call_command("seed_demo", stdout=StringIO())
@@ -1637,7 +1662,7 @@ class TestsCommandeSeedDemo(TestCase):
         super_admin = Utilisateur.objects.get(est_super_admin_plateforme=True)
         etablissement = Etablissement.objects.first()
 
-        with override_settings(DEBUG=True):
+        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=True):
             connexion = client.post(
                 "/api/auth/demo/",
                 {

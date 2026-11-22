@@ -17,7 +17,7 @@ const NOM_BASE_INDEXEDDB = 'klasik_erp_fichiers';
 const VERSION_BASE = 1;
 const NOM_MAGASIN = 'fichiers';
 const TAILLE_MAX_OCTETS = 25 * 1024 * 1024; // 25 Mo par fichier
-const SOURCE_API = import.meta.env.VITE_SOURCE_DONNEES === 'api';
+const SOURCE_API = import.meta.env.PROD || import.meta.env.VITE_SOURCE_DONNEES === 'api';
 
 const memoire_repli = new Map<string, FichierLocalStocke>();
 

@@ -29,9 +29,9 @@ Application de gestion éducative multi-établissements : React, TypeScript, Vit
 3. Créer l’environnement Python et appliquer les migrations :
 
    ```powershell
-   py -3 -m venv backend\.venv
-   backend\.venv\Scripts\python -m pip install -r backend\requirements.txt
-   .\backend\.venv\Scripts\Activate.ps1
+   py -3 -m venv backend\venv
+   backend\venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+   .\backend\venv\Scripts\Activate.ps1
    npm run backend:migrate
    npm run backend:seed
    ```
@@ -50,11 +50,11 @@ L’interface est disponible à `http://localhost:3000/`, l’API à `http://127
 
 ## Variables d’environnement
 
-- Frontend : `VITE_API_URL` (par défaut `/api`) et `VITE_SOURCE_DONNEES` (`local` par défaut ou `api`).
+- Frontend : `VITE_API_URL` (par défaut `/api`) et `VITE_SOURCE_DONNEES` (`local` par défaut ou `api`). En production, le frontend force le mode API.
 - Backend : `backend/.env.example` documente la clé Django, le mode debug, les hôtes/origines, SQLite et les paramètres PostgreSQL.
 - Ne copiez aucune clé privée, valeur `.env` ou configuration Firebase locale dans un commit. `firebase-applet-config.json` est ignoré par Git.
 
-En mode API et en développement (`DJANGO_DEBUG=true`), l’écran garde ses comptes démo et l’API délivre un JWT pour le compte sélectionné. Ce mécanisme de démonstration est désactivé si `DEBUG=false`. Les connexions réelles utilisent courriel et mot de passe Django. Les comptes importés par `seed_demo` n’ont pas de mot de passe utilisable : un administrateur doit leur en définir un. La connexion Google et la récupération de mot de passe ne sont pas encore reliées à Django.
+En mode API et en développement, les accès démo sont désactivés par défaut. Pour les activer localement, définir `DJANGO_DEBUG=true` et `DJANGO_DEMO_LOGIN_ENABLED=true`; seuls les comptes chargés par `seed_demo` peuvent alors utiliser `/api/auth/demo/`. Ils n’ont aucun mot de passe utilisable. Ne pas activer ce mécanisme en production. Les connexions réelles utilisent courriel et mot de passe Django. La connexion Google et la récupération de mot de passe ne sont pas encore reliées à Django. La création autonome d’établissement n’est pas encore prise en charge par l’API et le formulaire ne crée pas de compte local en mode API.
 
 Le mode `local` authentifie uniquement les comptes des données locales; il ne recherche pas les utilisateurs Django. Pour se connecter avec un compte Django (dont le superutilisateur), régler `VITE_SOURCE_DONNEES=api` puis redémarrer Vite et lancer l’API. En mode API, l’identifiant `superuser`/`superadmin` est accepté s’il existe un seul superutilisateur actif; sinon, utiliser son adresse courriel. Un super-administrateur plateforme peut ouvrir sa session sans affiliation ni établissement; l’espace plateforme démarre alors avec les listes métier vides.
 
@@ -89,4 +89,4 @@ docker compose up --build
 
 Cette configuration lance PostgreSQL, Django sur `8000` et le frontend/nginx sur `3000`, avec le proxy `/api/` vers Django.
 
-Le frontend conserve sa source locale par défaut et peut être lancé en mode API. Les deux modes d’authentification et les données de démonstration sont disponibles; certaines fonctions restent locales et les modèles métier utilisent actuellement un stockage JSON commun. Les rapports de phases listent les écarts qui empêchent encore d’annoncer la parité complète ou de supprimer Firebase.
+Le frontend conserve sa source locale par défaut en développement et peut être lancé en mode API. En production, il utilise toujours l’API. Certaines fonctions restent locales et les modèles métier utilisent actuellement un stockage JSON commun. Les rapports de phases listent les écarts qui empêchent encore d’annoncer la parité complète ou de supprimer Firebase.

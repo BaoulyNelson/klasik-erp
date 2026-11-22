@@ -134,7 +134,7 @@ import {
 
 const CLE_STOCKAGE_ETAT = 'klasik_etat_erp_v4';
 const CLE_STOCKAGE_SESSION = 'klasik_session_v4';
-const SOURCE_API = import.meta.env.VITE_SOURCE_DONNEES === 'api';
+const SOURCE_API = import.meta.env.PROD || import.meta.env.VITE_SOURCE_DONNEES === 'api';
 
 interface ProfilApi {
   id: string;
@@ -1807,6 +1807,15 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       nouveaux_elements: ElementPedagogique[],
       compte_fondateur?: SaisieFondateurEtablissement
     ): boolean => {
+      if (SOURCE_API) {
+        ajouter_toast({
+          titre: 'Création non disponible',
+          description:
+            'La création autonome n’est pas encore prise en charge par l’API sécurisée.',
+          variante: 'error',
+        });
+        return false;
+      }
       if (!etablissement.nom.trim() || etablissement.nom.trim().length < 2) {
         ajouter_toast({
           titre: 'Nom d’établissement requis',
@@ -2598,6 +2607,14 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   const connecter_utilisateur = useCallback(
     (id_utilisateur: string, id_etablissement_prefere?: string) => {
       if (SOURCE_API) {
+        if (import.meta.env.PROD) {
+          ajouter_toast({
+            titre: 'Accès démo indisponible',
+            description: 'Les accès de démonstration sont réservés au développement.',
+            variante: 'error',
+          });
+          return;
+        }
         void (async () => {
           try {
             await connecterDemoApi(id_utilisateur, id_etablissement_prefere);
@@ -2927,24 +2944,6 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   const authentifier_par_identifiants_api = useCallback(
     async (identifiant: string, mot_de_passe: string): Promise<{ ok: boolean; erreur?: string }> => {
       try {
-        if (import.meta.env.DEV) {
-          const identifiant_normalise = identifiant.trim().toLowerCase();
-          const compte_demo = etat.utilisateurs.find(
-            (utilisateur) =>
-              utilisateur.courriel.toLowerCase() === identifiant_normalise ||
-              utilisateur.telephone.toLowerCase() === identifiant_normalise ||
-              (utilisateur.est_super_admin_plateforme &&
-                ['superuser', 'superadmin', 'admin'].includes(identifiant_normalise))
-          );
-          if (compte_demo) {
-            if (compte_demo.mot_de_passe_demo === mot_de_passe) {
-              const id_etablissement =
-                compte_demo.affiliations[0]?.id_etablissement ?? undefined;
-              await connecterDemoApi(compte_demo.id, id_etablissement);
-              return await ouvrir_session_api(id_etablissement);
-            }
-          }
-        }
         await connecterApi(identifiant, mot_de_passe);
         const resultat = await ouvrir_session_api();
         return resultat.ok
@@ -2960,7 +2959,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         };
       }
     },
-    [etat.utilisateurs, ouvrir_session_api]
+    [ouvrir_session_api]
   );
 
   const demander_reinitialisation_mot_de_passe = useCallback(
@@ -6260,7 +6259,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         nom_complet: saisie.nom_complet.trim(),
         courriel: saisie.courriel.trim(),
         telephone: saisie.telephone.trim(),
-        mot_de_passe_demo: saisie.mot_de_passe_demo.trim() || 'Demo2026!',
+        mot_de_passe_demo: saisie.mot_de_passe_demo.trim(),
         initiales_avatar: initiales,
         est_actif: true,
         double_facteur_actif: saisie.double_facteur_actif,

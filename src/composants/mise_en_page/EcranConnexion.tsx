@@ -63,7 +63,7 @@ const TEXTES_CONNEXION: Record<
     ou: 'ou',
     google_chargement: 'Connexion avec Google...',
     google_continuer: 'Continuer avec Google',
-    mdp_demo: 'Mot de passe démo unifié :',
+    mdp_demo: 'Accès démo réservé au développement.',
     id_super: 'Identifiant rapide super-utilisateur :',
     nouveau_sur: 'Nouveau sur',
     desc_nouveau:
@@ -88,7 +88,7 @@ const TEXTES_CONNEXION: Record<
     ou: 'or',
     google_chargement: 'Signing in with Google...',
     google_continuer: 'Continue with Google',
-    mdp_demo: 'Unified demo password:',
+    mdp_demo: 'Demo access is for development only.',
     id_super: 'Quick superuser handle:',
     nouveau_sur: 'New to',
     desc_nouveau:
@@ -113,7 +113,7 @@ const TEXTES_CONNEXION: Record<
     ou: 'o',
     google_chargement: 'Conectando con Google...',
     google_continuer: 'Continuar con Google',
-    mdp_demo: 'Contraseña demo unificada:',
+    mdp_demo: 'Acceso demo solo para desarrollo.',
     id_super: 'Acceso rápido superusuario:',
     nouveau_sur: '¿Nuevo en',
     desc_nouveau:
@@ -138,7 +138,7 @@ const TEXTES_CONNEXION: Record<
     ou: 'oswa',
     google_chargement: 'Koneksyon ak Google...',
     google_continuer: 'Kontinye ak Google',
-    mdp_demo: 'Modpas demo inifye:',
+    mdp_demo: 'Aksè demo a rezève pou devlopman.',
     id_super: 'Idantifyan rapid sipè-itilizatè:',
     nouveau_sur: 'Nouvo sou',
     desc_nouveau:
@@ -173,8 +173,8 @@ export const EcranConnexion: React.FC = () => {
 
   const txt = TEXTES_CONNEXION[langue_active] ?? TEXTES_CONNEXION.fr;
 
-  const [courriel_saisi, definir_courriel_saisi] = useState('superadmin@klasik-erp.org');
-  const [mot_de_passe_saisi, definir_mot_de_passe_saisi] = useState('Demo2026!');
+  const [courriel_saisi, definir_courriel_saisi] = useState('');
+  const [mot_de_passe_saisi, definir_mot_de_passe_saisi] = useState('');
   const [message_erreur, definir_message_erreur] = useState<string | null>(null);
   const [chargement_google, definir_chargement_google] = useState(false);
 
@@ -190,7 +190,7 @@ export const EcranConnexion: React.FC = () => {
   const [cible_masquee_reinit, definir_cible_masquee_reinit] = useState<string | null>(null);
   const [otp_demo_reinit, definir_otp_demo_reinit] = useState<string | null>(null);
   const [erreur_reinit, definir_erreur_reinit] = useState<string | null>(null);
-  const source_api = import.meta.env.VITE_SOURCE_DONNEES === 'api';
+  const source_api = import.meta.env.PROD || import.meta.env.VITE_SOURCE_DONNEES === 'api';
 
   if (!ecran_connexion_ouvert) return null;
 
@@ -449,7 +449,7 @@ export const EcranConnexion: React.FC = () => {
                       <KeyRound className="w-3.5 h-3.5" />
                       <span>{txt.mdp_demo}</span>
                       <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                        Demo2026!
+                        DEV
                       </code>
                     </div>
                     <p>

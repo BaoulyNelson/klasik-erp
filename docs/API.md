@@ -14,7 +14,7 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `POST` | `/api/auth/password/reset/confirm/` | Publique | Consomme le jeton de réinitialisation et remplace le mot de passe. |
 | `POST` | `/api/auth/password/change/` | JWT d’accès | Change le mot de passe après validation du mot de passe actuel. |
 | `POST` | `/api/auth/google/` | Publique | Vérifie un jeton Google vérifié par courriel et renvoie des JWT uniquement si un compte local existe déjà. |
-| `POST` | `/api/auth/demo/` | Publique, développement seulement | Délivre un JWT de démonstration pour un utilisateur actif; répond 404 lorsque `DEBUG=false`. |
+| `POST` | `/api/auth/demo/` | Publique, développement avec opt-in | Délivre un JWT uniquement si `DEBUG=true`, `DJANGO_DEMO_LOGIN_ENABLED=true` et si le compte fait partie des comptes de démonstration seedés; répond 404 sinon. |
 | `GET` | `/api/auth/me/` | JWT d’accès | Profil courant, affiliations relationnelles et photo de profil enregistrée. |
 | `PATCH` | `/api/auth/profile/` | JWT d’accès | Enregistre ou retire la photo de profil (`url_avatar`); image encodée limitée à 512 Ko. |
 | `GET` | `/api/plateforme/configuration/` | JWT d’accès | Renvoie le logo global persistant de la plateforme. |

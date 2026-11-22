@@ -24,7 +24,8 @@ SECRET_KEY = os.getenv(
     "DJANGO_SECRET_KEY",
     "cle-de-developpement-insecure-a-remplacer-obligatoirement",
 )
-DEBUG = lire_booleen("DJANGO_DEBUG", True)
+DEBUG = lire_booleen("DJANGO_DEBUG", False)
+DEMO_LOGIN_ENABLED = DEBUG and lire_booleen("DJANGO_DEMO_LOGIN_ENABLED", False)
 if not DEBUG and (
     "DJANGO_SECRET_KEY" not in os.environ
     or not SECRET_KEY

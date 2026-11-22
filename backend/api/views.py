@@ -116,7 +116,7 @@ class ConnexionDemoView(APIView):
         responses=OpenApiTypes.OBJECT,
     )
     def post(self, request):
-        if not settings.DEBUG:
+        if not settings.DEBUG or not settings.DEMO_LOGIN_ENABLED:
             raise NotFound("La connexion de démonstration est désactivée.")
         if not isinstance(request.data, dict):
             raise ValidationError("Le corps de la requête doit être un objet JSON.")
@@ -124,7 +124,9 @@ class ConnexionDemoView(APIView):
         if not isinstance(id_utilisateur, str) or not id_utilisateur:
             raise ValidationError({"id_utilisateur": "L’identifiant utilisateur est obligatoire."})
         utilisateur = Utilisateur.objects.filter(pk=id_utilisateur, is_active=True).first()
-        if utilisateur is None:
+        if utilisateur is None or not (utilisateur.profil or {}).get(
+            "acces_demo_autorise", False
+        ):
             raise NotFound("Le compte de démonstration est introuvable ou désactivé.")
         id_etablissement = request.data.get("id_etablissement")
         if id_etablissement and not utilisateur.est_super_admin_plateforme:

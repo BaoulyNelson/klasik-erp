@@ -1226,7 +1226,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Tabitha Semaître',
     courriel: 'superadmin@klasik-erp.org',
     telephone: '+509 3700-0001',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'TS',
     est_super_admin_plateforme: true,
     affiliations: [
@@ -1242,7 +1242,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Jean-Robert Pierre',
     courriel: 'jr.pierre@epmethodiste.edu.ht',
     telephone: '+509 3700-1122',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'JP',
     affiliations: [
       { id_etablissement: 't-pro-epm', id_role: 'DIRECTEUR', fonction_locale: 'Directeur du centre' },
@@ -1254,7 +1254,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Mireille Toussaint-Félix',
     courriel: 'direction@leslauriers.edu.ht',
     telephone: '+509 3810-2200',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'MT',
     affiliations: [
       { id_etablissement: 't-sco-lauriers', id_role: 'DIRECTEUR', fonction_locale: 'Directrice générale' },
@@ -1265,7 +1265,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Dr. Ernst-Hérold Bélizaire',
     courriel: 'recteur@iut-haiti.edu.ht',
     telephone: '+509 3701-5500',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'EB',
     affiliations: [
       { id_etablissement: 't-uni-iut', id_role: 'DIRECTEUR', fonction_locale: 'Recteur de l’IUT' },
@@ -1276,7 +1276,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Réginald Casimir',
     courriel: 'admin@epmethodiste.edu.ht',
     telephone: '+509 3622-7741',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'RC',
     affiliations: [
       { id_etablissement: 't-pro-epm', id_role: 'ADMIN_ETAB', fonction_locale: 'Administrateur SI' },
@@ -1289,7 +1289,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Kettia Thermidor',
     courriel: 'scolarite@leslauriers.edu.ht',
     telephone: '+509 4412-3309',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'KT',
     affiliations: [
       { id_etablissement: 't-sco-lauriers', id_role: 'SCOLARITE', fonction_locale: 'Secrétaire académique' },
@@ -1302,7 +1302,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Marie-Ange Jean-Baptiste',
     courriel: 'economat@leslauriers.edu.ht',
     telephone: '+509 3744-9012',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'MJ',
     affiliations: [
       { id_etablissement: 't-sco-lauriers', id_role: 'ECONOME', fonction_locale: 'Économe principale' },
@@ -1315,7 +1315,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Dr. Carl-Henri Dorsainvil',
     courriel: 'etudes@iut-haiti.edu.ht',
     telephone: '+509 3701-9910',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'CD',
     affiliations: [
       { id_etablissement: 't-uni-iut', id_role: 'DIR_ETUDES', fonction_locale: 'Vice-recteur académique' },
@@ -1328,7 +1328,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Prof. Wilfrid Saint-Jean',
     courriel: 'w.saintjean@leslauriers.edu.ht',
     telephone: '+509 3755-2019',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'WS',
     affiliations: [
       { id_etablissement: 't-sco-lauriers', id_role: 'ENSEIGNANT', fonction_locale: 'Professeur de Mathématiques' },
@@ -1340,7 +1340,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Nadège Augustin',
     courriel: 'stages@epmethodiste.edu.ht',
     telephone: '+509 4820-1134',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'NA',
     affiliations: [
       { id_etablissement: 't-pro-epm', id_role: 'RESP_STAGES', fonction_locale: 'Responsable des stages' },
@@ -1352,7 +1352,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Yolène Clermont',
     courriel: 'services@leslauriers.edu.ht',
     telephone: '+509 3402-6611',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'YC',
     affiliations: [
       { id_etablissement: 't-sco-lauriers', id_role: 'SERVICES_ANNEXES', fonction_locale: 'Bibliothécaire & Infirmerie' },
@@ -1365,7 +1365,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Marie-Claire Jean-Baptiste',
     courriel: 'parent.jeanbaptiste@exemple.ht',
     telephone: '+509 3720-4100',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'MC',
     affiliations: [
       { id_etablissement: 't-sco-lauriers', id_role: 'PARENT', fonction_locale: 'Parent d’élève (2 enfants)' },
@@ -1377,7 +1377,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Widline Jean-Baptiste',
     courriel: 'widline.jb@exemple.ht',
     telephone: '+509 3100-1000',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'WJ',
     affiliations: [
       { id_etablissement: 't-pro-epm', id_role: 'APPRENANT', fonction_locale: 'Apprenante (Climatisation)' },
@@ -1390,7 +1390,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     nom_complet: 'Me Frantz Lamour',
     courriel: 'audit@klasik.ht',
     telephone: '+509 3901-8840',
-    mot_de_passe_demo: 'Demo2026!',
+    mot_de_passe_demo: '',
     initiales_avatar: 'FL',
     affiliations: [
       { id_etablissement: 't-pro-epm', id_role: 'AUDITEUR', fonction_locale: 'Auditeur externe' },
