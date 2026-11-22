@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from comptes.models import AffiliationEtablissement, SurchargePermissions
 from api.permissions import (
     COLLECTIONS_PORTAIL,
     PERMISSIONS_PAR_ROLE,
@@ -18,7 +19,6 @@ from api.permissions import (
     permissions_utilisateur,
     role_utilisateur_etablissement,
 )
-from comptes.models import SurchargePermissions
 from donnees.models import EnregistrementMetier, EntreeAuditApi
 from etablissements.models import Etablissement
 
@@ -225,6 +225,51 @@ class PermissionsRolesTenantView(APIView):
             id_objet=role,
         )
         return Response({"role": role, "permissions": permissions_uniques})
+
+
+class ListeUtilisateursTenantView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        operation_id="listerUtilisateursEtablissement",
+        responses=OpenApiTypes.OBJECT,
+    )
+    def get(self, request, id_etablissement: str):
+        etablissement = _obtenir_etablissement(id_etablissement)
+        _verifier_permission(request, etablissement, "comptes:gerer")
+        affiliations = (
+            AffiliationEtablissement.objects.filter(etablissement=etablissement)
+            .select_related("utilisateur")
+            .order_by("utilisateur__nom_complet", "utilisateur__courriel")
+        )
+        utilisateurs = []
+        for affiliation in affiliations:
+            utilisateur = affiliation.utilisateur
+            initiales = "".join(
+                mot[0].upper()
+                for mot in utilisateur.nom_complet.split()
+                if mot
+            )[:2]
+            utilisateurs.append(
+                {
+                    "id": utilisateur.id,
+                    "nom_complet": utilisateur.nom_complet,
+                    "courriel": utilisateur.courriel,
+                    "telephone": utilisateur.telephone,
+                    "mot_de_passe_demo": "",
+                    "initiales_avatar": initiales,
+                    "est_super_admin_plateforme": utilisateur.est_super_admin_plateforme,
+                    "est_actif": utilisateur.est_actif,
+                    "affiliations": [
+                        {
+                            "id_etablissement": etablissement.id,
+                            "id_role": affiliation.role,
+                            "fonction_locale": affiliation.fonction_locale,
+                        }
+                    ],
+                }
+            )
+        return Response(utilisateurs)
 
 
 class CollectionTenantView(APIView):

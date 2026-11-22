@@ -5,6 +5,7 @@ from api.tenant_views import (
     CollectionTenantView,
     DetailEnregistrementTenantView,
     ListeEtablissementsView,
+    ListeUtilisateursTenantView,
     PermissionsRolesTenantView,
 )
 
@@ -14,6 +15,11 @@ urlpatterns = [
         "etablissements/<str:id_etablissement>/permissions/",
         PermissionsRolesTenantView.as_view(),
         name="permissions-roles-etablissement",
+    ),
+    path(
+        "etablissements/<str:id_etablissement>/utilisateurs/",
+        ListeUtilisateursTenantView.as_view(),
+        name="utilisateurs-etablissement",
     ),
     path(
         "etablissements/<str:id_etablissement>/fichiers/",

@@ -305,6 +305,22 @@ async function charger_surcharges_permissions_api(
   }
 }
 
+async function charger_utilisateurs_api(
+  id_etablissement: string,
+  utilisateur_courant: CompteUtilisateur
+): Promise<CompteUtilisateur[]> {
+  try {
+    return await requeteApi<CompteUtilisateur[]>(
+      `/etablissements/${encodeURIComponent(id_etablissement)}/utilisateurs/`
+    );
+  } catch (erreur: unknown) {
+    if (erreur instanceof ErreurApi && erreur.statut === 403) {
+      return [utilisateur_courant];
+    }
+    throw erreur;
+  }
+}
+
 function obtenir_etat_persiste_defaut(): EtatPersiste {
   return {
     configuration_plateforme: CONFIGURATION_PLATEFORME_DEFAUT,
@@ -1500,10 +1516,14 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
               (donnees_api as Record<string, unknown>)[cle] = lignes;
             })
           );
-          const surcharges_permissions = await charger_surcharges_permissions_api(id_etablissement);
+          const [surcharges_permissions, utilisateurs_api] = await Promise.all([
+            charger_surcharges_permissions_api(id_etablissement),
+            charger_utilisateurs_api(id_etablissement, utilisateur_actif),
+          ]);
           const nouvel_etat: EtatPersiste = {
             ...etat,
             ...donnees_api,
+            utilisateurs: utilisateurs_api,
             surcharges_permissions: {
               ...Object.fromEntries(
                 Object.entries(etat.surcharges_permissions).filter(
@@ -1530,6 +1550,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     },
     [
       etat.etablissements,
+      utilisateur_actif,
       utilisateur_actif.est_super_admin_plateforme,
       utilisateur_actif.affiliations,
       ajouter_toast,
@@ -2244,6 +2265,10 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         est_actif: profil.est_actif,
         mot_de_passe_demo: '',
       };
+      const utilisateurs_api = await charger_utilisateurs_api(
+        etablissement_api.id,
+        utilisateur_api
+      );
       const etablissements_fusionnes = etablissements_api.map((etablissement) => ({
         ...etat.etablissements.find((existant) => existant.id === etablissement.id),
         ...etablissement,
@@ -2252,10 +2277,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         ...etat,
         ...donnees_api,
         etablissements: etablissements_fusionnes,
-        utilisateurs: [
-          ...etat.utilisateurs.filter((utilisateur) => utilisateur.id !== profil.id),
-          utilisateur_api,
-        ],
+        utilisateurs: utilisateurs_api,
         journaux_audit: [],
         file_hors_ligne: [],
         surcharges_permissions,

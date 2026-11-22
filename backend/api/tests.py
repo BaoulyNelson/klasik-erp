@@ -311,6 +311,63 @@ class TestsApiMultitenant(TestCase):
         self.assertEqual(autre_tenant.status_code, 403)
         self.assertFalse(SurchargePermissions.objects.exists())
 
+    def test_liste_utilisateurs_limitee_a_etablissement_et_a_permission(self):
+        utilisateur_multi_etablissement = Utilisateur.objects.create_user(
+            courriel="multi-etablissement@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Compte multi-établissements",
+            role="ADMIN_ETAB",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=utilisateur_multi_etablissement,
+            etablissement=self.etablissement,
+            role="SCOLARITE",
+            fonction_locale="Scolarité",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=utilisateur_multi_etablissement,
+            etablissement=self.autre_etablissement,
+            role="DIRECTEUR",
+            fonction_locale="Direction",
+        )
+
+        reponse = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/utilisateurs/"
+        )
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        comptes_recus = reponse.json()
+        self.assertTrue(
+            any(
+                ligne["id"] == str(utilisateur_multi_etablissement.id)
+                for ligne in comptes_recus
+            ),
+            comptes_recus,
+        )
+        compte = next(
+            ligne
+            for ligne in comptes_recus
+            if ligne["id"] == str(utilisateur_multi_etablissement.id)
+        )
+        self.assertEqual(
+            compte["affiliations"],
+            [
+                {
+                    "id_etablissement": self.etablissement.id,
+                    "id_role": "SCOLARITE",
+                    "fonction_locale": "Scolarité",
+                }
+            ],
+        )
+        self.assertEqual(compte["mot_de_passe_demo"], "")
+        self.assertNotIn("password", compte)
+
+        AffiliationEtablissement.objects.filter(utilisateur=self.utilisateur).update(role="AUDITEUR")
+        reponse_interdite = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/utilisateurs/"
+        )
+        self.assertEqual(reponse_interdite.status_code, 403)
+
 
 @override_settings(
     STORAGES={"default": {"BACKEND": "django.core.files.storage.InMemoryStorage"}}

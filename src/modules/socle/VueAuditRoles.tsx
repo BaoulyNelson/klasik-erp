@@ -10,7 +10,6 @@ import {
 } from '../../configuration/roles_permissions';
 import { utiliserErp } from '../../contexte/ContexteErp';
 import { IdentifiantRole } from '../../modeles/erp';
-import { service_donnees } from '../../services/service_donnees';
 
 export const VueAuditRoles: React.FC = () => {
   const {
@@ -21,6 +20,7 @@ export const VueAuditRoles: React.FC = () => {
     simuler_role_etablissement,
     journaux_audit,
     a_permission,
+    utilisateurs,
   } = utiliserErp();
 
   const [onglet, definir_onglet] = useState<'matrice' | 'utilisateurs' | 'audit'>('matrice');
@@ -52,8 +52,16 @@ export const VueAuditRoles: React.FC = () => {
     etablissement_actif.id,
     role_selectionne
   );
-  const utilisateurs_etablissement = service_donnees.obtenir_utilisateurs_par_etablissement(
-    etablissement_actif.id
+  const utilisateurs_etablissement = useMemo(
+    () =>
+      utilisateurs.filter((utilisateur) =>
+        utilisateur.est_super_admin_plateforme
+          ? true
+          : utilisateur.affiliations.some(
+              (affiliation) => affiliation.id_etablissement === etablissement_actif.id
+            )
+      ),
+    [utilisateurs, etablissement_actif.id]
   );
 
   const journaux_filtres = useMemo(() => {
