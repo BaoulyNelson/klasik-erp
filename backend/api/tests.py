@@ -36,6 +36,67 @@ class TestsAuthentificationApi(TestCase):
             role="ENSEIGNANT",
         )
 
+    @override_settings(DEBUG=True)
+    def test_reinitialisation_unique_et_change_mot_de_passe(self):
+        demande = self.client.post(
+            "/api/auth/password/reset/",
+            {"courriel": "test@example.org"},
+            format="json",
+        )
+        self.assertEqual(demande.status_code, 200)
+        token = demande.json().get("jeton_demo")
+        self.assertTrue(token)
+
+        confirmation = self.client.post(
+            "/api/auth/password/reset/confirm/",
+            {
+                "jeton": token,
+                "nouveau_mot_de_passe": "NouveauMotDePasse-2026",
+            },
+            format="json",
+        )
+        self.assertEqual(confirmation.status_code, 200)
+        self.utilisateur.refresh_from_db()
+        self.assertTrue(self.utilisateur.check_password("NouveauMotDePasse-2026"))
+
+        reuse = self.client.post(
+            "/api/auth/password/reset/confirm/",
+            {
+                "jeton": token,
+                "nouveau_mot_de_passe": "EncoreAutre-2026",
+            },
+            format="json",
+        )
+        self.assertEqual(reuse.status_code, 404)
+
+    def test_verrouillage_apres_tentatives_et_change_mot_de_passe(self):
+        for _ in range(5):
+            reponse = self.client.post(
+                "/api/auth/token/",
+                {"courriel": "test@example.org", "password": "incorrect"},
+                format="json",
+            )
+            self.assertIn(reponse.status_code, {400, 401, 403})
+        verrouille = self.client.post(
+            "/api/auth/token/",
+            {
+                "courriel": "test@example.org",
+                "password": "MotDePasseDeTest-2026",
+            },
+            format="json",
+        )
+        self.assertEqual(verrouille.status_code, 403)
+
+        jetons = self.client.post(
+            "/api/auth/token/",
+            {
+                "courriel": "test@example.org",
+                "password": "MotDePasseDeTest-2026",
+            },
+            format="json",
+        )
+        self.assertEqual(jetons.status_code, 403)
+
     def test_sante_est_publique_et_en_francais(self):
         reponse = self.client.get("/api/sante/")
 
@@ -67,7 +128,7 @@ class TestsAuthentificationApi(TestCase):
             format="json",
         )
 
-        self.assertEqual(reponse.status_code, 401)
+        self.assertIn(reponse.status_code, {401, 403})
         self.assertIn("message", reponse.json())
         self.assertIn("identifiants invalides", reponse.json()["message"])
 

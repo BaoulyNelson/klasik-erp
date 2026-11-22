@@ -134,3 +134,18 @@ class SurchargePermissions(models.Model):
         ordering = ["etablissement__nom", "role"]
         verbose_name = "surcharge de permissions"
         verbose_name_plural = "surcharges de permissions"
+
+
+class JetonReinitialisation(models.Model):
+    utilisateur = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.CASCADE,
+        related_name="jetons_reinitialisation",
+    )
+    empreinte = models.CharField(max_length=64, unique=True)
+    expire_le = models.DateTimeField()
+    utilise_le = models.DateTimeField(null=True, blank=True)
+    cree_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-cree_le"]

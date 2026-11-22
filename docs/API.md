@@ -10,6 +10,10 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `POST` | `/api/auth/token/` | Publique | Connexion par `courriel` et `password`; renvoie `access` et `refresh`. |
 | `POST` | `/api/auth/token/refresh/` | Jeton de renouvellement | Renouvelle le jeton d’accès; les refresh tokens sont rotatifs et révoqués après rotation. |
 | `POST` | `/api/auth/token/blacklist/` | JWT d’accès | Révoque un jeton de renouvellement. |
+| `POST` | `/api/auth/password/reset/` | Publique | Génère un jeton à usage unique expirant dans 30 minutes; le jeton est uniquement exposé dans la réponse en développement. |
+| `POST` | `/api/auth/password/reset/confirm/` | Publique | Consomme le jeton de réinitialisation et remplace le mot de passe. |
+| `POST` | `/api/auth/password/change/` | JWT d’accès | Change le mot de passe après validation du mot de passe actuel. |
+| `POST` | `/api/auth/google/` | Publique | Vérifie un jeton Google vérifié par courriel et renvoie des JWT uniquement si un compte local existe déjà. |
 | `POST` | `/api/auth/demo/` | Publique, développement seulement | Délivre un JWT de démonstration pour un utilisateur actif; répond 404 lorsque `DEBUG=false`. |
 | `GET` | `/api/auth/me/` | JWT d’accès | Profil courant sérialisé avec `id`, `courriel`, `nom_complet`, `telephone`, `role`, `est_super_admin_plateforme`, `est_actif`. |
 | `GET` | `/api/etablissements/` | JWT d’accès | Établissements affiliés à l’utilisateur; le super-administrateur plateforme peut les lister tous. |
