@@ -1381,32 +1381,51 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     appliquer_icone_plateforme();
-    const url_logo = etablissement_favicon?.url_logo?.trim();
-    if (!url_logo) return;
-
     let effet_actif = true;
-    const image_logo = new Image();
-    image_logo.onload = () => {
-      if (effet_actif) {
-        lien_icone.href = url_logo;
-        const type_mime = url_logo.match(/^data:(image\/[^;,]+)/i)?.[1];
-        if (type_mime) lien_icone.type = type_mime;
-        else lien_icone.removeAttribute('type');
-      }
+    const images_chargees: HTMLImageElement[] = [];
+    const appliquer_logo = (url_logo: string) => {
+      lien_icone.href = url_logo;
+      const type_mime = url_logo.match(/^data:(image\/[^;,]+)/i)?.[1];
+      if (type_mime) lien_icone.type = type_mime;
+      else lien_icone.removeAttribute('type');
     };
-    image_logo.onerror = () => {
-      if (effet_actif) appliquer_icone_plateforme();
+    const charger_logo = (url_logo: string, repli?: string) => {
+      const image = new Image();
+      images_chargees.push(image);
+      image.onload = () => {
+        if (effet_actif) appliquer_logo(url_logo);
+      };
+      image.onerror = () => {
+        if (!effet_actif) return;
+        if (repli) charger_logo(repli);
+        else appliquer_icone_plateforme();
+      };
+      image.src = url_logo;
     };
-    image_logo.src = url_logo;
+
+    const url_logo_etablissement = etablissement_favicon?.url_logo?.trim();
+    const url_logo_plateforme = etat.configuration_plateforme.url_logo?.trim();
+    const url_logo_principal =
+      url_logo_etablissement || url_logo_plateforme || '/icon.svg';
+    const url_logo_repli =
+      url_logo_etablissement &&
+      url_logo_plateforme &&
+      url_logo_etablissement !== url_logo_plateforme
+        ? url_logo_plateforme
+        : undefined;
+    charger_logo(url_logo_principal, url_logo_repli);
 
     return () => {
       effet_actif = false;
-      image_logo.onload = null;
-      image_logo.onerror = null;
+      images_chargees.forEach((image) => {
+        image.onload = null;
+        image.onerror = null;
+      });
     };
   }, [
     etablissement_favicon?.id,
     etablissement_favicon?.url_logo,
+    etat.configuration_plateforme.url_logo,
     est_authentifie,
     mode_affichage,
     ecran_connexion_ouvert,
