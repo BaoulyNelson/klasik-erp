@@ -89,3 +89,24 @@ class EntreeAuditApi(models.Model):
         ordering = ["-cree_le"]
         verbose_name = "entrée d’audit API"
         verbose_name_plural = "entrées d’audit API"
+
+
+class ReferenceFichier(models.Model):
+    fichier = models.ForeignKey(
+        FichierTeleverse,
+        on_delete=models.CASCADE,
+        related_name="references",
+    )
+    enregistrement = models.ForeignKey(
+        EnregistrementMetier,
+        on_delete=models.CASCADE,
+        related_name="references_fichiers",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("fichier", "enregistrement"),
+                name="references_unique_fichier_enregistrement",
+            )
+        ]

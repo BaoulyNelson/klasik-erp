@@ -11,17 +11,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import (
-    PERMISSIONS_COLLECTIONS,
-    permissions_utilisateur,
-    role_utilisateur_etablissement,
-)
+from api.permissions import permissions_utilisateur, role_utilisateur_etablissement
 from api.tenant_views import (
     _objet_dans_perimetre,
     _perimetre_utilisateur,
     _permissions_collection,
 )
-from donnees.models import EnregistrementMetier, FichierTeleverse
+from donnees.models import EnregistrementMetier, FichierTeleverse, ReferenceFichier
 from etablissements.models import Etablissement
 
 TAILLE_MAX_FICHIER = 25 * 1024 * 1024
@@ -54,24 +50,30 @@ def _fichier_visible_par_utilisateur(request, fichier: FichierTeleverse) -> bool
         return False
     permissions = permissions_utilisateur(request.user, fichier.etablissement)
     perimetre = _perimetre_utilisateur(request.user, role, fichier.etablissement)
-    for collection in PERMISSIONS_COLLECTIONS:
-        permission_lecture, _ = _permissions_collection(request, fichier.etablissement, collection)
+    references = ReferenceFichier.objects.filter(
+        fichier=fichier
+    ).select_related("enregistrement")
+    for reference in references:
+        enregistrement = reference.enregistrement
+        permission_lecture, _ = _permissions_collection(
+            request,
+            fichier.etablissement,
+            enregistrement.collection,
+        )
         if permission_lecture not in permissions:
             continue
-        lignes = EnregistrementMetier.objects.filter(
-            etablissement=fichier.etablissement,
-            collection=collection,
-        ).values_list("id_objet", "donnees")
-        for id_objet, donnees in lignes:
-            donnees_publiques = {
-                **donnees,
-                "id": id_objet,
-                "id_etablissement": fichier.etablissement_id,
-            }
-            if _objet_dans_perimetre(role, collection, donnees_publiques, perimetre) and (
-                _contient_reference_fichier(donnees_publiques, str(fichier.id))
-            ):
-                return True
+        donnees_publiques = {
+            **enregistrement.donnees,
+            "id": enregistrement.id_objet,
+            "id_etablissement": fichier.etablissement_id,
+        }
+        if _objet_dans_perimetre(
+            role,
+            enregistrement.collection,
+            donnees_publiques,
+            perimetre,
+        ):
+            return True
     return False
 
 
