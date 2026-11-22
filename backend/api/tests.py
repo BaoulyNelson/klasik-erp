@@ -238,6 +238,9 @@ class TestsApiMultitenant(TestCase):
         self.assertEqual(modification.status_code, 200)
         self.assertEqual(modification.json()["nom"], "Modifié")
         self.assertEqual(suppression.status_code, 204)
+        entree_audit = EntreeAuditApi.objects.get(id_objet="apprenant-crud", action="SUPPRESSION")
+        self.assertEqual(entree_audit.nom_acteur, self.utilisateur.nom_complet)
+        self.assertEqual(entree_audit.role_acteur, "ADMIN_ETAB")
         self.assertFalse(
             EnregistrementMetier.objects.filter(
                 etablissement=self.etablissement,
@@ -367,6 +370,41 @@ class TestsApiMultitenant(TestCase):
             f"/api/etablissements/{self.etablissement.id}/utilisateurs/"
         )
         self.assertEqual(reponse_interdite.status_code, 403)
+
+    def test_journal_audit_est_tenant_scopee_et_refuse_un_role_sans_droit(self):
+        EntreeAuditApi.objects.create(
+            etablissement=self.etablissement,
+            utilisateur=self.utilisateur,
+            nom_acteur="Gestionnaire au moment de l’action",
+            role_acteur="ADMIN_ETAB",
+            action="MODIFICATION",
+            collection="roles",
+            id_objet="ENSEIGNANT",
+        )
+
+        journal = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/audit/"
+        )
+        autre_tenant = self.client.get(
+            f"/api/etablissements/{self.autre_etablissement.id}/audit/"
+        )
+
+        self.assertEqual(journal.status_code, 200)
+        entree = journal.json()[0]
+        self.assertEqual(entree["id_etablissement"], self.etablissement.id)
+        self.assertEqual(entree["nom_acteur"], "Gestionnaire au moment de l’action")
+        self.assertEqual(entree["role_acteur"], "ADMIN_ETAB")
+        self.assertEqual(entree["action"], "MODIFICATION")
+        self.assertEqual(entree["cible"], "roles:ENSEIGNANT")
+        self.assertEqual(entree["categorie"], "RBAC")
+        self.assertTrue(entree["horodatage"])
+        self.assertEqual(autre_tenant.status_code, 403)
+
+        AffiliationEtablissement.objects.filter(utilisateur=self.utilisateur).update(role="ENSEIGNANT")
+        role_sans_audit = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/audit/"
+        )
+        self.assertEqual(role_sans_audit.status_code, 403)
 
 
 @override_settings(

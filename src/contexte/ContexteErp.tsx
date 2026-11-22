@@ -321,6 +321,19 @@ async function charger_utilisateurs_api(
   }
 }
 
+async function charger_journaux_audit_api(
+  id_etablissement: string
+): Promise<EntreeJournalAudit[]> {
+  try {
+    return await requeteApi<EntreeJournalAudit[]>(
+      `/etablissements/${encodeURIComponent(id_etablissement)}/audit/`
+    );
+  } catch (erreur: unknown) {
+    if (erreur instanceof ErreurApi && erreur.statut === 403) return [];
+    throw erreur;
+  }
+}
+
 function obtenir_etat_persiste_defaut(): EtatPersiste {
   return {
     configuration_plateforme: CONFIGURATION_PLATEFORME_DEFAUT,
@@ -1516,14 +1529,17 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
               (donnees_api as Record<string, unknown>)[cle] = lignes;
             })
           );
-          const [surcharges_permissions, utilisateurs_api] = await Promise.all([
+          const [surcharges_permissions, utilisateurs_api, journaux_audit_api] =
+            await Promise.all([
             charger_surcharges_permissions_api(id_etablissement),
             charger_utilisateurs_api(id_etablissement, utilisateur_actif),
+            charger_journaux_audit_api(id_etablissement),
           ]);
           const nouvel_etat: EtatPersiste = {
             ...etat,
             ...donnees_api,
             utilisateurs: utilisateurs_api,
+            journaux_audit: journaux_audit_api,
             surcharges_permissions: {
               ...Object.fromEntries(
                 Object.entries(etat.surcharges_permissions).filter(
@@ -2269,6 +2285,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         etablissement_api.id,
         utilisateur_api
       );
+      const journaux_audit_api = await charger_journaux_audit_api(etablissement_api.id);
       const etablissements_fusionnes = etablissements_api.map((etablissement) => ({
         ...etat.etablissements.find((existant) => existant.id === etablissement.id),
         ...etablissement,
@@ -2278,7 +2295,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         ...donnees_api,
         etablissements: etablissements_fusionnes,
         utilisateurs: utilisateurs_api,
-        journaux_audit: [],
+        journaux_audit: journaux_audit_api,
         file_hors_ligne: [],
         surcharges_permissions,
       };

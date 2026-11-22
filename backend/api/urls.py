@@ -4,6 +4,7 @@ from api.file_views import LectureFichierView, TeleversementFichierTenantView
 from api.tenant_views import (
     CollectionTenantView,
     DetailEnregistrementTenantView,
+    JournalAuditTenantView,
     ListeEtablissementsView,
     ListeUtilisateursTenantView,
     PermissionsRolesTenantView,
@@ -20,6 +21,11 @@ urlpatterns = [
         "etablissements/<str:id_etablissement>/utilisateurs/",
         ListeUtilisateursTenantView.as_view(),
         name="utilisateurs-etablissement",
+    ),
+    path(
+        "etablissements/<str:id_etablissement>/audit/",
+        JournalAuditTenantView.as_view(),
+        name="journal-audit-etablissement",
     ),
     path(
         "etablissements/<str:id_etablissement>/fichiers/",

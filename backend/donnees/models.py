@@ -78,6 +78,8 @@ class EntreeAuditApi(models.Model):
         on_delete=models.PROTECT,
         related_name="actions_auditees",
     )
+    nom_acteur = models.CharField(max_length=120, blank=True)
+    role_acteur = models.CharField(max_length=32, blank=True)
     action = models.CharField(max_length=16)
     collection = models.CharField(max_length=64)
     id_objet = models.CharField(max_length=128)

@@ -54,6 +54,18 @@ def _verifier_permission(request, etablissement, permission: str | None) -> None
         raise PermissionDenied("Vous n’avez pas la permission d’effectuer cette action.")
 
 
+def _enregistrer_audit_api(request, etablissement, action, collection, id_objet) -> None:
+    EntreeAuditApi.objects.create(
+        etablissement=etablissement,
+        utilisateur=request.user,
+        nom_acteur=request.user.nom_complet,
+        role_acteur=role_utilisateur_etablissement(request.user, etablissement),
+        action=action,
+        collection=collection,
+        id_objet=id_objet,
+    )
+
+
 def _perimetre_utilisateur(utilisateur, role, etablissement) -> dict[str, set[str]]:
     if role in {"PARENT", "APPRENANT"}:
         ids_apprenants = set(utilisateur.profil.get("ids_apprenants_lies", []))
@@ -217,13 +229,7 @@ class PermissionsRolesTenantView(APIView):
         )
         surcharge.permissions = permissions_uniques
         surcharge.save(update_fields=("permissions",))
-        EntreeAuditApi.objects.create(
-            etablissement=etablissement,
-            utilisateur=request.user,
-            action="MODIFICATION",
-            collection="roles",
-            id_objet=role,
-        )
+        _enregistrer_audit_api(request, etablissement, "MODIFICATION", "roles", role)
         return Response({"role": role, "permissions": permissions_uniques})
 
 
@@ -270,6 +276,48 @@ class ListeUtilisateursTenantView(APIView):
                 }
             )
         return Response(utilisateurs)
+
+
+class JournalAuditTenantView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        operation_id="listerJournalAuditEtablissement",
+        responses=OpenApiTypes.OBJECT,
+    )
+    def get(self, request, id_etablissement: str):
+        etablissement = _obtenir_etablissement(id_etablissement)
+        _verifier_permission(request, etablissement, "audit:voir")
+        categories = {
+            "roles": "RBAC",
+            "documents": "DOCUMENT",
+            "apprenants": "ADMISSION",
+            "inscriptions": "ADMISSION",
+            "paiements": "FINANCE",
+            "notes": "PEDAGOGIE",
+            "presences": "PEDAGOGIE",
+            "emplois_du_temps": "PEDAGOGIE",
+        }
+        entrees = (
+            EntreeAuditApi.objects.filter(etablissement=etablissement)
+            .select_related("utilisateur")
+            .order_by("-cree_le", "-id")[:200]
+        )
+        return Response(
+            [
+                {
+                    "id": str(entree.id),
+                    "id_etablissement": etablissement.id,
+                    "nom_acteur": entree.nom_acteur or entree.utilisateur.nom_complet,
+                    "role_acteur": entree.role_acteur or entree.utilisateur.role,
+                    "action": entree.action,
+                    "cible": f"{entree.collection}:{entree.id_objet}",
+                    "categorie": categories.get(entree.collection, "CONFIG"),
+                    "horodatage": entree.cree_le.isoformat(),
+                }
+                for entree in entrees
+            ]
+        )
 
 
 class CollectionTenantView(APIView):
@@ -358,12 +406,12 @@ class CollectionTenantView(APIView):
             )
         except IntegrityError as erreur:
             raise ValidationError({"id": "Cet identifiant existe déjà dans cette collection."}) from erreur
-        EntreeAuditApi.objects.create(
-            etablissement=etablissement,
-            utilisateur=request.user,
-            action="CREATION",
-            collection=collection,
-            id_objet=enregistrement.id_objet,
+        _enregistrer_audit_api(
+            request,
+            etablissement,
+            "CREATION",
+            collection,
+            enregistrement.id_objet,
         )
         return Response(_donnees_publiques(enregistrement), status=status.HTTP_201_CREATED)
 
@@ -419,13 +467,7 @@ class DetailEnregistrementTenantView(APIView):
             raise PermissionDenied("Cet enregistrement est hors de votre périmètre autorisé.")
         enregistrement.donnees = donnees
         enregistrement.save(update_fields=("donnees", "modifie_le"))
-        EntreeAuditApi.objects.create(
-            etablissement=etablissement,
-            utilisateur=request.user,
-            action="MODIFICATION",
-            collection=collection,
-            id_objet=id_objet,
-        )
+        _enregistrer_audit_api(request, etablissement, "MODIFICATION", collection, id_objet)
         return Response(_donnees_publiques(enregistrement))
 
     @extend_schema(operation_id="supprimerDonneeEtablissement", responses={204: None})
@@ -449,13 +491,7 @@ class DetailEnregistrementTenantView(APIView):
             perimetre,
         ):
             raise NotFound("L’enregistrement demandé est introuvable.")
-        EntreeAuditApi.objects.create(
-            etablissement=etablissement,
-            utilisateur=request.user,
-            action="SUPPRESSION",
-            collection=collection,
-            id_objet=id_objet,
-        )
+        _enregistrer_audit_api(request, etablissement, "SUPPRESSION", collection, id_objet)
         enregistrement.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

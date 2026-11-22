@@ -65,7 +65,7 @@ npm run backend:check
 npm run backend:test
 ```
 
-Le backend fournit JWT, profil courant, `/api/sante/`, OpenAPI, une liste d’utilisateurs limitée par tenant et permission, un magasin de données JSON tenant-scopé, la commande `seed_demo`, des endpoints protégés de téléversement/téléchargement (25 Mo maximum) et la gestion API des surcharges RBAC autorisées. Le client en mode API charge les collections autorisées, synchronise leurs créations, modifications et suppressions, et récupère les fichiers avec contrôle des droits côté serveur. Les permissions filtrent les tenants et les périmètres Parent/Apprenant/Enseignant. Les modèles métier relationnels détaillés, la fédération Google, la récupération de mot de passe et la gestion API complète des comptes/établissements restent à terminer; voir les rapports de phase dans `docs/`.
+Le backend fournit JWT, profil courant, `/api/sante/`, OpenAPI, une liste d’utilisateurs limitée par tenant et permission, un journal d’audit tenant-scopé, un magasin de données JSON, la commande `seed_demo`, des endpoints protégés de téléversement/téléchargement (25 Mo maximum) et la gestion API des surcharges RBAC autorisées. Le client en mode API charge les collections autorisées, synchronise leurs créations, modifications et suppressions, et récupère les fichiers avec contrôle des droits côté serveur. Les permissions filtrent les tenants et les périmètres Parent/Apprenant/Enseignant. Les modèles métier relationnels détaillés, la fédération Google, la récupération de mot de passe et la gestion API complète des comptes/établissements restent à terminer; voir les rapports de phase dans `docs/`.
 
 ## Documentation
 
