@@ -155,6 +155,63 @@ class TestsAuthentificationApi(TestCase):
         self.assertEqual(profil.status_code, 200)
         self.assertEqual(profil.json()["id"], str(superutilisateur.id))
 
+    def test_superuser_peut_se_connecter_sans_affiliation(self):
+        superutilisateur = Utilisateur.objects.create_superuser(
+            "plateforme@example.org",
+            "MotDePassePlateforme-2026",
+        )
+        reponse_jetons = self.client.post(
+            "/api/auth/token/",
+            {
+                "courriel": "plateforme@example.org",
+                "password": "MotDePassePlateforme-2026",
+            },
+            format="json",
+        )
+        self.assertEqual(reponse_jetons.status_code, 200)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {reponse_jetons.json()['access']}"
+        )
+
+        profil = self.client.get("/api/auth/me/")
+        etablissements = self.client.get("/api/etablissements/")
+
+        self.assertEqual(profil.status_code, 200)
+        self.assertTrue(profil.json()["est_super_admin_plateforme"])
+        self.assertEqual(profil.json()["affiliations"], [])
+        self.assertEqual(etablissements.status_code, 200)
+        self.assertEqual(etablissements.json(), [])
+
+    def test_profil_courant_renvoie_les_affiliations_relationnelles(self):
+        etablissement = Etablissement.objects.create(
+            id="tenant-profil-auth",
+            code="PROFIL-AUTH",
+            nom="Établissement profil",
+            nom_court="Profil",
+            type="SCOLAIRE",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=etablissement,
+            role="ADMIN_ETAB",
+            fonction_locale="Administrateur",
+        )
+        self.client.force_authenticate(self.utilisateur)
+
+        reponse = self.client.get("/api/auth/me/")
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(
+            reponse.json()["affiliations"],
+            [
+                {
+                    "id_etablissement": "tenant-profil-auth",
+                    "id_role": "ADMIN_ETAB",
+                    "fonction_locale": "Administrateur",
+                }
+            ],
+        )
+
     def test_connexion_refuse_un_mot_de_passe_invalide_en_francais(self):
         reponse = self.client.post(
             "/api/auth/token/",

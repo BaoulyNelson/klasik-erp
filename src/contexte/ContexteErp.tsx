@@ -2344,23 +2344,6 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           )
         ) ??
         etablissements_accessibles[0];
-      if (!etablissement_api) {
-        return {
-          ok: false,
-          erreur: 'Aucun établissement autorisé n’est associé à ce compte.',
-        };
-      }
-      const donnees_api: Partial<EtatPersiste> = {};
-      await Promise.all(
-        COLLECTIONS_API.map(async ({ cle, collection }) => {
-          const lignes = await charger_collection_api(etablissement_api.id, collection);
-          (donnees_api as Record<string, unknown>)[cle] = lignes;
-        })
-      );
-      const surcharges_permissions = await charger_surcharges_permissions_api(
-        etablissement_api.id
-      );
-
       const utilisateur_source =
         etat.utilisateurs.find((utilisateur) => utilisateur.id === profil.id) ??
         UTILISATEURS_INITIAUX.find((utilisateur) => utilisateur.id === profil.id);
@@ -2389,6 +2372,54 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         est_actif: profil.est_actif,
         mot_de_passe_demo: '',
       };
+      if (!etablissement_api) {
+        if (profil.est_super_admin_plateforme) {
+          const donnees_api: Partial<EtatPersiste> = {};
+          for (const { cle } of COLLECTIONS_API) {
+            (donnees_api as Record<string, unknown>)[cle] = [];
+          }
+          const nouvel_etat: EtatPersiste = {
+            ...etat,
+            ...donnees_api,
+            etablissements: [],
+            utilisateurs: [utilisateur_api],
+            journaux_audit: [],
+            file_hors_ligne: [],
+            surcharges_permissions: {},
+          };
+          instantane_api.current = nouvel_etat;
+          definir_etat(nouvel_etat);
+          definir_id_utilisateur_actif(profil.id);
+          definir_surcharge_role(null);
+          definir_id_apprenant_selectionne(null);
+          definir_id_etablissement_actif('');
+          definir_route_active_interne('plateforme');
+          definir_est_authentifie(true);
+          definir_mode_affichage('espace_travail');
+          definir_ecran_connexion_ouvert(false);
+          ajouter_toast({
+            titre: `Connecté : ${profil.nom_complet}`,
+            description: 'Rôle actif : Super-administrateur Plateforme',
+            variante: 'success',
+          });
+          return { ok: true };
+        }
+        return {
+          ok: false,
+          erreur: 'Aucun établissement autorisé n’est associé à ce compte.',
+        };
+      }
+      const donnees_api: Partial<EtatPersiste> = {};
+      await Promise.all(
+        COLLECTIONS_API.map(async ({ cle, collection }) => {
+          const lignes = await charger_collection_api(etablissement_api.id, collection);
+          (donnees_api as Record<string, unknown>)[cle] = lignes;
+        })
+      );
+      const surcharges_permissions = await charger_surcharges_permissions_api(
+        etablissement_api.id
+      );
+
       const utilisateurs_api = await charger_utilisateurs_api(
         etablissement_api.id,
         utilisateur_api
