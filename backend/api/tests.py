@@ -16,6 +16,11 @@ from scolarite.models import (
     InscriptionApprenant,
     UniteAcademique,
 )
+from pedagogie.models import (
+    EvenementCalendrier,
+    NoteEvaluation,
+    PersonnelEnseignant,
+)
 
 Utilisateur = get_user_model()
 
@@ -510,6 +515,129 @@ class TestsApiMultitenant(TestCase):
             f"/api/etablissements/{self.etablissement.id}/audit/"
         )
         self.assertEqual(role_sans_audit.status_code, 403)
+
+
+class TestsContratsPedagogieRelationnelle(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.etablissement = Etablissement.objects.create(
+            id="tenant-pedagogie-rel",
+            code="PED-REL",
+            nom="Établissement pédagogie relationnelle",
+            nom_court="Pédagogie",
+            type="SCOLAIRE",
+        )
+        self.autre_etablissement = Etablissement.objects.create(
+            id="tenant-pedagogie-autre",
+            code="PED-AUTRE",
+            nom="Autre établissement pédagogie",
+            nom_court="Autre",
+            type="SCOLAIRE",
+        )
+        self.utilisateur = Utilisateur.objects.create_user(
+            courriel="pedagogie.relationnelle@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Directeur des études relationnel",
+            role="DIR_ETUDES",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=self.etablissement,
+            role="DIR_ETUDES",
+        )
+        self.client.force_authenticate(self.utilisateur)
+
+        self.unite = UniteAcademique.objects.create(
+            id="unite-pedagogie",
+            etablissement=self.etablissement,
+            code="PED-1",
+            nom="Unité pédagogique",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        self.apprenant = Apprenant.objects.create(
+            id="apprenant-pedagogie",
+            etablissement=self.etablissement,
+            unite=self.unite,
+            matricule="PED-001",
+            prenom="Jean",
+            nom="Élève",
+            sexe="M",
+            indice_etape=3,
+        )
+        self.element = ElementPedagogique.objects.create(
+            id="element-pedagogie",
+            etablissement=self.etablissement,
+            unite=self.unite,
+            code="PED-MAT",
+            nom="Mathématiques",
+            nature="MATIERE",
+            coefficient_ou_credits=5,
+            volume_horaire_total=180,
+        )
+        self.enseignant = PersonnelEnseignant.objects.create(
+            id="enseignant-pedagogie",
+            etablissement=self.etablissement,
+            code="ENS-PED",
+            nom_complet="Professeur Test",
+            specialite="Mathématiques",
+            type_contrat="Contractuel",
+            ids_unites_assignees=["unite-pedagogie"],
+            ids_elements_assignes=["element-pedagogie"],
+        )
+        self.note = NoteEvaluation.objects.create(
+            id="note-pedagogie",
+            etablissement=self.etablissement,
+            apprenant=self.apprenant,
+            element=self.element,
+            libelle_periode="1er Trimestre",
+            type_evaluation="Contrôle",
+            note=16,
+            note_maximale=20,
+            enregistree_le="2026-10-10",
+        )
+
+    def test_contrat_note_publiée_verrouillee_en_snake_case(self):
+        detail = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/notes/{self.note.id}/"
+        )
+        publication = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/notes/{self.note.id}/publier/"
+        )
+        modification = self.client.patch(
+            f"/api/etablissements/{self.etablissement.id}/notes/{self.note.id}/",
+            {"note": 18},
+            format="json",
+        )
+
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["id_apprenant"], "apprenant-pedagogie")
+        self.assertEqual(detail.json()["id_element"], "element-pedagogie")
+        self.assertEqual(detail.json()["note_maximale"], 20)
+        self.assertEqual(publication.status_code, 200)
+        self.assertTrue(publication.json()["verrouillee"])
+        self.assertEqual(modification.status_code, 400)
+
+    def test_endpoint_pedagogie_isole_le_tenant(self):
+        evenement = EvenementCalendrier.objects.create(
+            id="evenement-autre",
+            etablissement=self.autre_etablissement,
+            type="PERIODE",
+            titre="Période autre tenant",
+            date_debut="2026-10-01",
+        )
+
+        liste_interdite = self.client.get(
+            f"/api/etablissements/{self.autre_etablissement.id}/evenements_calendrier/"
+        )
+        liste_autorisee = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/evenements_calendrier/"
+        )
+
+        self.assertEqual(liste_interdite.status_code, 403)
+        self.assertEqual(liste_autorisee.status_code, 200)
+        evenement.refresh_from_db()
+        self.assertEqual(evenement.titre, "Période autre tenant")
 
 
 class TestsContratsScolariteRelationnelle(TestCase):

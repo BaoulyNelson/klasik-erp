@@ -264,6 +264,20 @@ const COLLECTIONS_API: { cle: keyof EtatPersiste; collection: string }[] = [
   { cle: 'demandes_conge', collection: 'demandes_conge' },
 ];
 
+const COLLECTIONS_RELATIONNELLES_TYPED = new Set([
+  'unites',
+  'elements',
+  'apprenants',
+  'inscriptions',
+  'enseignants',
+  'notes',
+  'presences',
+  'emplois_du_temps',
+  'evenements_calendrier',
+  'cahiers_textes',
+  'soutenances',
+]);
+
 async function charger_collection_api(
   id_etablissement: string,
   collection: string
@@ -272,9 +286,7 @@ async function charger_collection_api(
   let page = 1;
   while (true) {
     let reponse: { results: unknown[]; next: number | null };
-    const collection_typed = ['unites', 'elements', 'apprenants', 'inscriptions'].includes(
-      collection
-    );
+    const collection_typed = COLLECTIONS_RELATIONNELLES_TYPED.has(collection);
     const chemin_collection = collection_typed
       ? `/etablissements/${encodeURIComponent(id_etablissement)}/${collection}/`
       : `/etablissements/${encodeURIComponent(id_etablissement)}/donnees/${collection}/`;
@@ -2451,9 +2463,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         for (const [cle_ligne, ancienne] of anciennes) {
           if (nouvelles.has(cle_ligne)) continue;
           const ligne = obtenir_reference(ancienne);
-          const collection_typed = ['unites', 'elements', 'apprenants', 'inscriptions'].includes(
-            collection
-          );
+          const collection_typed = COLLECTIONS_RELATIONNELLES_TYPED.has(collection);
           const base = collection_typed
             ? `/etablissements/${encodeURIComponent(ligne.tenant)}/${collection}/`
             : `/etablissements/${encodeURIComponent(ligne.tenant)}/donnees/${collection}/`;
@@ -2465,9 +2475,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         for (const [cle_ligne, nouvelle] of nouvelles) {
           const ancienne = anciennes.get(cle_ligne);
           const donnee = obtenir_reference(nouvelle);
-          const collection_typed = ['unites', 'elements', 'apprenants', 'inscriptions'].includes(
-            collection
-          );
+          const collection_typed = COLLECTIONS_RELATIONNELLES_TYPED.has(collection);
           const base = collection_typed
             ? `/etablissements/${encodeURIComponent(donnee.tenant)}/${collection}/`
             : `/etablissements/${encodeURIComponent(donnee.tenant)}/donnees/${collection}/`;

@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     "comptes",
     "etablissements",
     "scolarite",
+    "pedagogie",
     "donnees",
     "api",
 ]

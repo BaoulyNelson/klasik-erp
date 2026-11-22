@@ -16,6 +16,15 @@ from scolarite.models import (
     InscriptionApprenant,
     UniteAcademique,
 )
+from pedagogie.models import (
+    CreneauEmploiDuTemps,
+    EntreeCahierTextes,
+    EvenementCalendrier,
+    NoteEvaluation,
+    PersonnelEnseignant,
+    Presence,
+    Soutenance,
+)
 
 FICHIER_DONNEES = Path(__file__).resolve().parents[3] / "fixtures" / "donnees_demo.json"
 
@@ -309,6 +318,182 @@ class Command(BaseCommand):
                 },
             )
 
+        for ligne in donnees.get("enseignants", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Un enseignant possède un établissement invalide.")
+            PersonnelEnseignant.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "code": contenu.get("code", contenu["id"]),
+                    "nom_complet": contenu.get("nom_complet", ""),
+                    "specialite": contenu.get("specialite", ""),
+                    "type_contrat": contenu.get("type_contrat", "Contractuel"),
+                    "telephone": contenu.get("telephone", ""),
+                    "courriel": contenu.get("courriel", ""),
+                    "ids_unites_assignees": contenu.get("ids_unites_assignees", []) or [],
+                    "ids_elements_assignes": contenu.get("ids_elements_assignes", []) or [],
+                    "heures_mensuelles": int(contenu.get("heures_mensuelles", 0) or 0),
+                    "taux_horaire_ou_mensuel_htg": contenu.get(
+                        "taux_horaire_ou_mensuel_htg",
+                        0,
+                    ),
+                },
+            )
+
+        for ligne in donnees.get("notes", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            apprenant = Apprenant.objects.filter(
+                id=contenu.get("id_apprenant"),
+                etablissement=etablissement,
+            ).first()
+            element = ElementPedagogique.objects.filter(
+                id=contenu.get("id_element"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or apprenant is None or element is None:
+                raise CommandError("Une note possède une relation invalide.")
+            NoteEvaluation.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "apprenant": apprenant,
+                    "element": element,
+                    "libelle_periode": contenu.get("libelle_periode", ""),
+                    "type_evaluation": contenu.get("type_evaluation", "Devoir"),
+                    "note": contenu.get("note", 0),
+                    "note_maximale": contenu.get("note_maximale", 100),
+                    "verrouillee": bool(contenu.get("verrouillee", False)),
+                    "enregistree_le": contenu.get("enregistree_le", ""),
+                },
+            )
+
+        for ligne in donnees.get("presences", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            apprenant = Apprenant.objects.filter(
+                id=contenu.get("id_apprenant"),
+                etablissement=etablissement,
+            ).first()
+            unite = UniteAcademique.objects.filter(
+                id=contenu.get("id_unite"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or apprenant is None or unite is None:
+                raise CommandError("Une présence possède une relation invalide.")
+            Presence.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "apprenant": apprenant,
+                    "unite": unite,
+                    "date": contenu.get("date", ""),
+                    "statut": contenu.get("statut", "PRESENT"),
+                    "observation": contenu.get("observation", ""),
+                },
+            )
+
+        for ligne in donnees.get("emplois_du_temps", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            unite = UniteAcademique.objects.filter(
+                id=contenu.get("id_unite"),
+                etablissement=etablissement,
+            ).first()
+            element = ElementPedagogique.objects.filter(
+                id=contenu.get("id_element"),
+                etablissement=etablissement,
+            ).first()
+            enseignant = PersonnelEnseignant.objects.filter(
+                id=contenu.get("id_enseignant"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or unite is None or element is None or enseignant is None:
+                raise CommandError("Un créneau emploi du temps possède une relation invalide.")
+            CreneauEmploiDuTemps.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "unite": unite,
+                    "element": element,
+                    "enseignant": enseignant,
+                    "salle": contenu.get("salle", ""),
+                    "jour_semaine": contenu.get("jour_semaine", "Lundi"),
+                    "heure_debut": contenu.get("heure_debut", "08:00"),
+                    "heure_fin": contenu.get("heure_fin", "09:00"),
+                },
+            )
+
+        for ligne in donnees.get("evenements_calendrier", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Un événement possède un établissement invalide.")
+            EvenementCalendrier.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "type": contenu.get("type", "EVENEMENT"),
+                    "titre": contenu.get("titre", ""),
+                    "date_debut": contenu.get("date_debut", ""),
+                    "date_fin": contenu.get("date_fin", ""),
+                    "concerne_unites": contenu.get("concerne_unites", ""),
+                    "description": contenu.get("description", ""),
+                },
+            )
+
+        for ligne in donnees.get("cahiers_textes", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            unite = UniteAcademique.objects.filter(
+                id=contenu.get("id_unite"),
+                etablissement=etablissement,
+            ).first()
+            element = ElementPedagogique.objects.filter(
+                id=contenu.get("id_element"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or unite is None or element is None:
+                raise CommandError("Une entrée du cahier possède une relation invalide.")
+            EntreeCahierTextes.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "unite": unite,
+                    "element": element,
+                    "nom_enseignant": contenu.get("nom_enseignant", ""),
+                    "date": contenu.get("date", ""),
+                    "sujet": contenu.get("sujet", ""),
+                    "devoir_donne": contenu.get("devoir_donne", ""),
+                },
+            )
+
+        for ligne in donnees.get("soutenances", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            apprenant = Apprenant.objects.filter(
+                id=contenu.get("id_apprenant"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or apprenant is None:
+                raise CommandError("Une soutenance possède une relation invalide.")
+            Soutenance.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "apprenant": apprenant,
+                    "titre": contenu.get("titre", ""),
+                    "nom_directeur_memoire": contenu.get("nom_directeur_memoire", ""),
+                    "membres_jury": contenu.get("membres_jury", ""),
+                    "date_soutenance": contenu.get("date_soutenance", ""),
+                    "note": contenu.get("note"),
+                    "statut": contenu.get("statut", "PLANIFIEE"),
+                },
+            )
+
         for collection, lignes in donnees.items():
             if collection in {"etablissements", "utilisateurs"}:
                 continue
@@ -335,6 +520,21 @@ class Command(BaseCommand):
                 "inscriptions": InscriptionApprenant.objects.filter(
                     etablissement=etablissement
                 ).count(),
+                "enseignants": PersonnelEnseignant.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "notes": NoteEvaluation.objects.filter(etablissement=etablissement).count(),
+                "presences": Presence.objects.filter(etablissement=etablissement).count(),
+                "emplois_du_temps": CreneauEmploiDuTemps.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "evenements_calendrier": EvenementCalendrier.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "cahiers_textes": EntreeCahierTextes.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "soutenances": Soutenance.objects.filter(etablissement=etablissement).count(),
             }
         for id_etablissement, totaux in totaux_relationnels.items():
             attendus = {
@@ -356,6 +556,41 @@ class Command(BaseCommand):
                 "inscriptions": sum(
                     1
                     for ligne in donnees.get("inscriptions", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "enseignants": sum(
+                    1
+                    for ligne in donnees.get("enseignants", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "notes": sum(
+                    1
+                    for ligne in donnees.get("notes", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "presences": sum(
+                    1
+                    for ligne in donnees.get("presences", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "emplois_du_temps": sum(
+                    1
+                    for ligne in donnees.get("emplois_du_temps", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "evenements_calendrier": sum(
+                    1
+                    for ligne in donnees.get("evenements_calendrier", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "cahiers_textes": sum(
+                    1
+                    for ligne in donnees.get("cahiers_textes", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "soutenances": sum(
+                    1
+                    for ligne in donnees.get("soutenances", [])
                     if ligne.get("id_etablissement") == id_etablissement
                 ),
             }

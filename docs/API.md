@@ -19,6 +19,14 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/apprenants/` | JWT avec périmètre apprenant/enseignant | Ressource relationnelle typée des apprenants, tuteurs et échéances; filtrée au périmètre du rôle. |
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/inscriptions/` | JWT avec permission admissions | Ressource relationnelle typée des inscriptions. |
 | `POST` | `/api/etablissements/{id_etablissement}/inscriptions/{id}/annuler/` | JWT avec `admissions:gerer` | Action métier auditée qui annule une inscription et conserve son motif. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/enseignants/` | JWT avec `rh:voir` / `rh:gerer` | Ressource relationnelle typée des personnels enseignants. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/notes/` | JWT avec `pedagogie:voir` / `pedagogie:noter` | Ressource relationnelle typée des notes, avec publication verrouillée. |
+| `POST` | `/api/etablissements/{id_etablissement}/notes/{id}/publier/` | JWT avec `pedagogie:noter` | Publie une note et verrouille sa modification ou suppression. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/presences/` | JWT avec `pedagogie:voir` / `pedagogie:appel` | Ressource relationnelle typée des présences, filtrée par unité pour les enseignants. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/emplois_du_temps/` | JWT avec `emplois_du_temps:voir` / `gerer` | Créneaux typés reliés aux unités, éléments et enseignants. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/evenements_calendrier/` | JWT avec `emplois_du_temps:voir` / `gerer` | Ressource typée du calendrier académique. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/cahiers_textes/` | JWT avec `pedagogie:voir` / `pedagogie:noter` | Entrées du cahier reliées à une unité et un élément. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/soutenances/` | JWT avec `pedagogie:voir` / `pedagogie:verrouiller` | Ressource typée des soutenances liée à un apprenant. |
 | `GET` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Liste les surcharges RBAC configurées dans l’établissement. |
 | `PUT` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Enregistre les permissions d’un rôle du tenant; le rôle `SUPER_ADMIN` ne peut pas être modifié. Chaque changement est inscrit dans le journal d’audit serveur. |
 | `GET` | `/api/etablissements/{id_etablissement}/utilisateurs/` | JWT et permission `comptes:gerer` | Liste les comptes affiliés à cet établissement et uniquement leur affiliation dans ce tenant; aucun mot de passe n’est renvoyé. |
