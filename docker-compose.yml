@@ -1,14 +1,15 @@
 services:
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: klasik
-      POSTGRES_USER: klasik
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-klasik-local}
+      POSTGRES_DB: ${DB_NAME:?Set DB_NAME}
+      POSTGRES_USER: ${DB_USER:?Set DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U klasik -d klasik"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -16,14 +17,29 @@ services:
   backend:
     build:
       context: ./backend
+    restart: unless-stopped
     environment:
       DJANGO_DEBUG: "false"
-      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
-      DJANGO_CORS_ALLOWED_ORIGINS: "http://localhost"
-      DB_ENGINE: postgres
-      DB_NAME: klasik
-      DB_USER: klasik
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-klasik-local}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY}
+      DJANGO_ALLOWED_HOSTS: "${DJANGO_ALLOWED_HOSTS:?Set DJANGO_ALLOWED_HOSTS},backend"
+      DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?Set DJANGO_CORS_ALLOWED_ORIGINS}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:?Set DJANGO_CSRF_TRUSTED_ORIGINS}
+      DJANGO_SECURE_SSL_REDIRECT: "true"
+      DJANGO_SECURE_HSTS_SECONDS: ${DJANGO_SECURE_HSTS_SECONDS:-31536000}
+      DJANGO_NUM_PROXIES: ${DJANGO_NUM_PROXIES:-2}
+      DJANGO_CACHE_BACKEND: database
+      DJANGO_EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+      DJANGO_EMAIL_HOST: ${DJANGO_EMAIL_HOST:?Set DJANGO_EMAIL_HOST}
+      DJANGO_EMAIL_PORT: ${DJANGO_EMAIL_PORT:-587}
+      DJANGO_EMAIL_HOST_USER: ${DJANGO_EMAIL_HOST_USER:-}
+      DJANGO_EMAIL_HOST_PASSWORD: ${DJANGO_EMAIL_HOST_PASSWORD:-}
+      DJANGO_EMAIL_USE_TLS: ${DJANGO_EMAIL_USE_TLS:-true}
+      DJANGO_EMAIL_USE_SSL: ${DJANGO_EMAIL_USE_SSL:-false}
+      DJANGO_DEFAULT_FROM_EMAIL: ${DJANGO_DEFAULT_FROM_EMAIL:?Set DJANGO_DEFAULT_FROM_EMAIL}
+      DB_ENGINE: postgresql
+      DB_NAME: ${DB_NAME:?Set DB_NAME}
+      DB_USER: ${DB_USER:?Set DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
       DB_HOST: db
       DB_PORT: "5432"
     depends_on:
@@ -31,18 +47,38 @@ services:
         condition: service_healthy
     volumes:
       - backend_media:/app/media
-    ports:
-      - "8000:8000"
+      - backend_static:/app/staticfiles
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; request=urllib.request.Request('http://127.0.0.1:8000/api/sante/', headers={'Host':'backend','X-Forwarded-Proto':'https'}); urllib.request.urlopen(request, timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   frontend:
     build:
       context: .
-    environment:
-      VITE_API_URL: /api
-      VITE_SOURCE_DONNEES: api
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - backend_static:/var/www/backend-static:ro
     ports:
-      - "3000:80"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_data:
   backend_media:
+  backend_static:

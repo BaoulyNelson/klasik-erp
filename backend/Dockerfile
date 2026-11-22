@@ -8,7 +8,12 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
-RUN mkdir -p /app/media /app/staticfiles
+RUN groupadd --system app \
+    && useradd --system --gid app --home-dir /app app \
+    && mkdir -p /app/media /app/staticfiles \
+    && chown -R app:app /app
+
+USER app
 
 EXPOSE 8000
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["sh", "/app/scripts/container-entrypoint.sh"]
