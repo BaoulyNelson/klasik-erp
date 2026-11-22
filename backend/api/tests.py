@@ -21,6 +21,7 @@ from pedagogie.models import (
     NoteEvaluation,
     PersonnelEnseignant,
 )
+from finances.models import Depense, Paiement
 
 Utilisateur = get_user_model()
 
@@ -515,6 +516,140 @@ class TestsApiMultitenant(TestCase):
             f"/api/etablissements/{self.etablissement.id}/audit/"
         )
         self.assertEqual(role_sans_audit.status_code, 403)
+
+
+class TestsContratsFinancesRelationnelles(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.etablissement = Etablissement.objects.create(
+            id="tenant-finances-rel",
+            code="FIN-REL",
+            nom="Établissement finances relationnelles",
+            nom_court="Finances",
+            type="SCOLAIRE",
+        )
+        self.autre_etablissement = Etablissement.objects.create(
+            id="tenant-finances-autre",
+            code="FIN-AUTRE",
+            nom="Autre établissement finances",
+            nom_court="Autre",
+            type="SCOLAIRE",
+        )
+        self.utilisateur = Utilisateur.objects.create_user(
+            courriel="econome.relationnel@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Économe relationnel",
+            role="ECONOME",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=self.etablissement,
+            role="ECONOME",
+        )
+        self.client.force_authenticate(self.utilisateur)
+
+        self.unite = UniteAcademique.objects.create(
+            id="unite-finances",
+            etablissement=self.etablissement,
+            code="FIN-1",
+            nom="Unité finances",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        self.apprenant = Apprenant.objects.create(
+            id="apprenant-finances",
+            etablissement=self.etablissement,
+            unite=self.unite,
+            matricule="FIN-001",
+            prenom="Ada",
+            nom="Finance",
+            sexe="F",
+            indice_etape=1,
+        )
+        self.paiement = Paiement.objects.create(
+            id="paiement-rel",
+            etablissement=self.etablissement,
+            apprenant=self.apprenant,
+            numero_recu="REC-FIN-001",
+            montant_htg=25000,
+            mode_paiement="MonCash",
+            libelle="Frais scolaires",
+            paye_le="2026-10-01",
+            encaisse_par="Économe relationnel",
+            statut="VALIDE",
+        )
+
+    def test_contrat_paiement_et_action_annuler(self):
+        detail = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/paiements/{self.paiement.id}/"
+        )
+        annulation = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/paiements/{self.paiement.id}/annuler/"
+        )
+        double_annulation = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/paiements/{self.paiement.id}/annuler/"
+        )
+
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["id_apprenant"], "apprenant-finances")
+        self.assertEqual(detail.json()["montant_htg"], 25000)
+        self.assertEqual(detail.json()["statut"], "VALIDE")
+        self.assertEqual(annulation.status_code, 200)
+        self.assertEqual(annulation.json()["statut"], "ANNULE")
+        self.assertEqual(double_annulation.status_code, 400)
+
+    def test_isolation_et_permission_finances(self):
+        autre_apprenant = Apprenant.objects.create(
+            id="apprenant-finances-autre",
+            etablissement=self.autre_etablissement,
+            unite=UniteAcademique.objects.create(
+                id="unite-finances-autre",
+                etablissement=self.autre_etablissement,
+                code="FIN-AUTRE",
+                nom="Unité autre",
+                categorie="Secondaire",
+                niveau_ou_duree="Année",
+            ),
+            matricule="FIN-AUTRE-001",
+            prenom="Hors",
+            nom="Tenant",
+            sexe="M",
+            indice_etape=1,
+        )
+        paiement_autre = Paiement.objects.create(
+            id="paiement-finances-autre",
+            etablissement=self.autre_etablissement,
+            apprenant=autre_apprenant,
+            numero_recu="REC-FIN-AUTRE",
+            montant_htg=1000,
+            mode_paiement="Espèces",
+            libelle="Paiement autre tenant",
+            paye_le="2026-10-01",
+            encaisse_par="Autre",
+        )
+
+        liste_interdite = self.client.get(
+            f"/api/etablissements/{self.autre_etablissement.id}/paiements/"
+        )
+        depense = Depense.objects.create(
+            id="depense-finances-rel",
+            etablissement=self.etablissement,
+            categorie="Fournitures",
+            description="Rame de papier",
+            fournisseur="Fournisseur test",
+            montant_htg=500,
+            payee_le="2026-10-02",
+            enregistree_par="Économe relationnel",
+        )
+        liste_depenses = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/depenses/"
+        )
+
+        self.assertEqual(liste_interdite.status_code, 403)
+        self.assertEqual(liste_depenses.status_code, 200)
+        self.assertEqual([ligne["id"] for ligne in liste_depenses.json()["results"]], [depense.id])
+        paiement_autre.refresh_from_db()
+        self.assertEqual(paiement_autre.statut, "VALIDE")
 
 
 class TestsContratsPedagogieRelationnelle(TestCase):

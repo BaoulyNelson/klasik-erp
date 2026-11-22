@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     "etablissements",
     "scolarite",
     "pedagogie",
+    "finances",
     "donnees",
     "api",
 ]

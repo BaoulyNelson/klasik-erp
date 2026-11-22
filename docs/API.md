@@ -27,6 +27,12 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/evenements_calendrier/` | JWT avec `emplois_du_temps:voir` / `gerer` | Ressource typée du calendrier académique. |
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/cahiers_textes/` | JWT avec `pedagogie:voir` / `pedagogie:noter` | Entrées du cahier reliées à une unité et un élément. |
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/soutenances/` | JWT avec `pedagogie:voir` / `pedagogie:verrouiller` | Ressource typée des soutenances liée à un apprenant. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/paiements/` | JWT avec `finances:voir` / `finances:encaisser` | Ressource typée des paiements, filtrée au périmètre apprenant/parent. |
+| `POST` | `/api/etablissements/{id_etablissement}/paiements/{id}/annuler/` | JWT avec `finances:gerer` | Annule un paiement validé une fois, avec trace d’audit. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/depenses/` | JWT avec `finances:voir` / `finances:gerer` | Ressource typée des dépenses tenant-scopées. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/paie/` | JWT avec `rh:voir` / `rh:gerer` | Ressource typée des bulletins reliée au personnel enseignant. |
+| `POST` | `/api/etablissements/{id_etablissement}/paie/{id}/payer/` | JWT avec `rh:gerer` | Passe un bulletin en payé et conserve sa date de paiement. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/abonnements/` | JWT avec `services:voir` / `services:gerer` | Ressource typée des abonnements cantine, transport ou fournitures. |
 | `GET` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Liste les surcharges RBAC configurées dans l’établissement. |
 | `PUT` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Enregistre les permissions d’un rôle du tenant; le rôle `SUPER_ADMIN` ne peut pas être modifié. Chaque changement est inscrit dans le journal d’audit serveur. |
 | `GET` | `/api/etablissements/{id_etablissement}/utilisateurs/` | JWT et permission `comptes:gerer` | Liste les comptes affiliés à cet établissement et uniquement leur affiliation dans ce tenant; aucun mot de passe n’est renvoyé. |

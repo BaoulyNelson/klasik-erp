@@ -25,6 +25,7 @@ from pedagogie.models import (
     Presence,
     Soutenance,
 )
+from finances.models import AbonnementService, BulletinPaie, Depense, Paiement
 
 FICHIER_DONNEES = Path(__file__).resolve().parents[3] / "fixtures" / "donnees_demo.json"
 
@@ -494,6 +495,107 @@ class Command(BaseCommand):
                 },
             )
 
+        for ligne in donnees.get("paiements", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            apprenant = Apprenant.objects.filter(
+                id=contenu.get("id_apprenant"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or apprenant is None:
+                raise CommandError("Un paiement possède une relation invalide.")
+            Paiement.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "apprenant": apprenant,
+                    "numero_recu": contenu.get("numero_recu", contenu["id"]),
+                    "montant_htg": contenu.get("montant_htg", 0),
+                    "mode_paiement": contenu.get("mode_paiement", "Espèces"),
+                    "code_reference": contenu.get("code_reference", ""),
+                    "libelle_compte_bancaire": contenu.get("libelle_compte_bancaire", ""),
+                    "libelle": contenu.get("libelle", ""),
+                    "paye_le": contenu.get("paye_le", ""),
+                    "encaisse_par": contenu.get("encaisse_par", ""),
+                    "statut": contenu.get("statut", "VALIDE"),
+                },
+            )
+
+        for ligne in donnees.get("depenses", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Une dépense possède un établissement invalide.")
+            Depense.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "categorie": contenu.get("categorie", "Autre"),
+                    "description": contenu.get("description", ""),
+                    "fournisseur": contenu.get("fournisseur", ""),
+                    "montant_htg": contenu.get("montant_htg", 0),
+                    "payee_le": contenu.get("payee_le", ""),
+                    "enregistree_par": contenu.get("enregistree_par", ""),
+                },
+            )
+
+        for ligne in donnees.get("paie", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            personnel = PersonnelEnseignant.objects.filter(
+                id=contenu.get("id_personnel"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or personnel is None:
+                raise CommandError("Un bulletin de paie possède une relation invalide.")
+            BulletinPaie.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "personnel": personnel,
+                    "nom_personnel": contenu.get("nom_personnel", personnel.nom_complet),
+                    "libelle_role": contenu.get("libelle_role", ""),
+                    "libelle_mois": contenu.get("libelle_mois", ""),
+                    "heures_travaillees": contenu.get("heures_travaillees", 0),
+                    "salaire_base_htg": contenu.get("salaire_base_htg"),
+                    "primes_htg": contenu.get("primes_htg"),
+                    "motif_primes": contenu.get("motif_primes", ""),
+                    "montant_brut_htg": contenu.get("montant_brut_htg", 0),
+                    "retenues_htg": contenu.get("retenues_htg", 0),
+                    "motif_retenues": contenu.get("motif_retenues", ""),
+                    "montant_net_htg": contenu.get("montant_net_htg", 0),
+                    "statut": contenu.get("statut", "EN_ATTENTE"),
+                    "mode_paiement": contenu.get("mode_paiement", ""),
+                    "observations": contenu.get("observations", ""),
+                    "paye_le": contenu.get("paye_le", ""),
+                    "cree_le": contenu.get("cree_le", ""),
+                },
+            )
+
+        for ligne in donnees.get("abonnements", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            apprenant = Apprenant.objects.filter(
+                id=contenu.get("id_apprenant"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or apprenant is None:
+                raise CommandError("Un abonnement possède une relation invalide.")
+            AbonnementService.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "apprenant": apprenant,
+                    "type_service": contenu.get("type_service", "Cantine"),
+                    "tarif_mensuel_ou_annuel_htg": contenu.get(
+                        "tarif_mensuel_ou_annuel_htg",
+                        0,
+                    ),
+                    "actif": bool(contenu.get("actif", True)),
+                    "ligne_ou_formule": contenu.get("ligne_ou_formule", ""),
+                },
+            )
+
         for collection, lignes in donnees.items():
             if collection in {"etablissements", "utilisateurs"}:
                 continue
@@ -535,6 +637,12 @@ class Command(BaseCommand):
                     etablissement=etablissement
                 ).count(),
                 "soutenances": Soutenance.objects.filter(etablissement=etablissement).count(),
+                "paiements": Paiement.objects.filter(etablissement=etablissement).count(),
+                "depenses": Depense.objects.filter(etablissement=etablissement).count(),
+                "paie": BulletinPaie.objects.filter(etablissement=etablissement).count(),
+                "abonnements": AbonnementService.objects.filter(
+                    etablissement=etablissement
+                ).count(),
             }
         for id_etablissement, totaux in totaux_relationnels.items():
             attendus = {
@@ -591,6 +699,26 @@ class Command(BaseCommand):
                 "soutenances": sum(
                     1
                     for ligne in donnees.get("soutenances", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "paiements": sum(
+                    1
+                    for ligne in donnees.get("paiements", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "depenses": sum(
+                    1
+                    for ligne in donnees.get("depenses", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "paie": sum(
+                    1
+                    for ligne in donnees.get("paie", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "abonnements": sum(
+                    1
+                    for ligne in donnees.get("abonnements", [])
                     if ligne.get("id_etablissement") == id_etablissement
                 ),
             }

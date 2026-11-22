@@ -276,6 +276,10 @@ const COLLECTIONS_RELATIONNELLES_TYPED = new Set([
   'evenements_calendrier',
   'cahiers_textes',
   'soutenances',
+  'paiements',
+  'depenses',
+  'paie',
+  'abonnements',
 ]);
 
 async function charger_collection_api(
