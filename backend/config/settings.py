@@ -71,6 +71,8 @@ INSTALLED_APPS = [
     "scolarite",
     "pedagogie",
     "finances",
+    "documents",
+    "communication",
     "donnees",
     "api",
 ]

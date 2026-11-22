@@ -26,6 +26,8 @@ from pedagogie.models import (
     Soutenance,
 )
 from finances.models import AbonnementService, BulletinPaie, Depense, Paiement
+from documents.models import DocumentOfficiel
+from communication.models import ArticleActualite, MessageCommunication, Notification
 
 FICHIER_DONNEES = Path(__file__).resolve().parents[3] / "fixtures" / "donnees_demo.json"
 
@@ -596,6 +598,87 @@ class Command(BaseCommand):
                 },
             )
 
+        for ligne in donnees.get("documents", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            apprenant = Apprenant.objects.filter(
+                id=contenu.get("id_apprenant"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or apprenant is None:
+                raise CommandError("Un document possède une relation invalide.")
+            DocumentOfficiel.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "apprenant": apprenant,
+                    "numero_document": contenu.get("numero_document", contenu["id"]),
+                    "type_document": contenu.get("type_document", ""),
+                    "emis_le": contenu.get("emis_le", ""),
+                    "emis_par": contenu.get("emis_par", ""),
+                    "empreinte_verification": contenu.get("empreinte_verification", ""),
+                },
+            )
+
+        for ligne in donnees.get("communications", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Une communication possède un établissement invalide.")
+            MessageCommunication.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "titre": contenu.get("titre", ""),
+                    "contenu": contenu.get("contenu", ""),
+                    "canal": contenu.get("canal", "Interne"),
+                    "audience": contenu.get("audience", "Tous"),
+                    "envoye_le": contenu.get("envoye_le", ""),
+                    "envoye_par": contenu.get("envoye_par", ""),
+                    "nombre_destinataires": int(contenu.get("nombre_destinataires", 0) or 0),
+                },
+            )
+
+        for ligne in donnees.get("notifications", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Une notification possède un établissement invalide.")
+            Notification.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "titre": contenu.get("titre", ""),
+                    "description": contenu.get("description", ""),
+                    "severite": contenu.get("severite", "info"),
+                    "cree_le": contenu.get("cree_le", ""),
+                    "lue": bool(contenu.get("lue", False)),
+                    "route_cible": contenu.get("route_cible", ""),
+                },
+            )
+
+        for ligne in donnees.get("articles_actualites", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Une actualité possède un établissement invalide.")
+            ArticleActualite.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "titre": contenu.get("titre", ""),
+                    "categorie": contenu.get("categorie", "Académique"),
+                    "resume": contenu.get("resume", ""),
+                    "contenu": contenu.get("contenu", ""),
+                    "publie_le": contenu.get("publie_le", ""),
+                    "date_evenement": contenu.get("date_evenement", ""),
+                    "lieu": contenu.get("lieu", ""),
+                    "nom_auteur": contenu.get("nom_auteur", ""),
+                    "epingle": bool(contenu.get("epingle", False)),
+                    "audience": contenu.get("audience", "Tous"),
+                },
+            )
+
         for collection, lignes in donnees.items():
             if collection in {"etablissements", "utilisateurs"}:
                 continue
@@ -641,6 +724,18 @@ class Command(BaseCommand):
                 "depenses": Depense.objects.filter(etablissement=etablissement).count(),
                 "paie": BulletinPaie.objects.filter(etablissement=etablissement).count(),
                 "abonnements": AbonnementService.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "documents": DocumentOfficiel.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "communications": MessageCommunication.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "notifications": Notification.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "articles_actualites": ArticleActualite.objects.filter(
                     etablissement=etablissement
                 ).count(),
             }
@@ -719,6 +814,26 @@ class Command(BaseCommand):
                 "abonnements": sum(
                     1
                     for ligne in donnees.get("abonnements", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "documents": sum(
+                    1
+                    for ligne in donnees.get("documents", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "communications": sum(
+                    1
+                    for ligne in donnees.get("communications", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "notifications": sum(
+                    1
+                    for ligne in donnees.get("notifications", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "articles_actualites": sum(
+                    1
+                    for ligne in donnees.get("articles_actualites", [])
                     if ligne.get("id_etablissement") == id_etablissement
                 ),
             }

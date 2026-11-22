@@ -280,6 +280,10 @@ const COLLECTIONS_RELATIONNELLES_TYPED = new Set([
   'depenses',
   'paie',
   'abonnements',
+  'documents',
+  'communications',
+  'notifications',
+  'articles_actualites',
 ]);
 
 async function charger_collection_api(

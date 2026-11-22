@@ -33,6 +33,8 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/paie/` | JWT avec `rh:voir` / `rh:gerer` | Ressource typée des bulletins reliée au personnel enseignant. |
 | `POST` | `/api/etablissements/{id_etablissement}/paie/{id}/payer/` | JWT avec `rh:gerer` | Passe un bulletin en payé et conserve sa date de paiement. |
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/abonnements/` | JWT avec `services:voir` / `services:gerer` | Ressource typée des abonnements cantine, transport ou fournitures. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/documents/` | JWT avec `documents:voir` / `documents:emettre` | Ressource typée des documents officiels liée à un apprenant. |
+| `POST` | `/api/etablissements/{id_etablissement}/documents/{id}/emettre/` | JWT avec `documents:emettre` | Action métier d’émission auditée d’un document. |
 | `GET` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Liste les surcharges RBAC configurées dans l’établissement. |
 | `PUT` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Enregistre les permissions d’un rôle du tenant; le rôle `SUPER_ADMIN` ne peut pas être modifié. Chaque changement est inscrit dans le journal d’audit serveur. |
 | `GET` | `/api/etablissements/{id_etablissement}/utilisateurs/` | JWT et permission `comptes:gerer` | Liste les comptes affiliés à cet établissement et uniquement leur affiliation dans ce tenant; aucun mot de passe n’est renvoyé. |
