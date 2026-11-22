@@ -1356,6 +1356,63 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     );
   }, [etablissements_accessibles, etat.etablissements, id_etablissement_actif]);
 
+  const etablissement_favicon =
+    est_authentifie &&
+    mode_affichage === 'espace_travail' &&
+    !ecran_connexion_ouvert &&
+    !modale_nouvel_etablissement_ouverte
+      ? etablissements_accessibles.find(
+          (etablissement) => etablissement.id === id_etablissement_actif
+        )
+      : undefined;
+
+  useEffect(() => {
+    const lien_icone =
+      document.querySelector<HTMLLinkElement>('link[rel~="icon"]') ??
+      document.createElement('link');
+    if (!lien_icone.isConnected) {
+      lien_icone.rel = 'icon';
+      document.head.appendChild(lien_icone);
+    }
+
+    const appliquer_icone_plateforme = () => {
+      lien_icone.href = '/icon.svg';
+      lien_icone.type = 'image/svg+xml';
+    };
+
+    appliquer_icone_plateforme();
+    const url_logo = etablissement_favicon?.url_logo?.trim();
+    if (!url_logo) return;
+
+    let effet_actif = true;
+    const image_logo = new Image();
+    image_logo.onload = () => {
+      if (effet_actif) {
+        lien_icone.href = url_logo;
+        const type_mime = url_logo.match(/^data:(image\/[^;,]+)/i)?.[1];
+        if (type_mime) lien_icone.type = type_mime;
+        else lien_icone.removeAttribute('type');
+      }
+    };
+    image_logo.onerror = () => {
+      if (effet_actif) appliquer_icone_plateforme();
+    };
+    image_logo.src = url_logo;
+
+    return () => {
+      effet_actif = false;
+      image_logo.onload = null;
+      image_logo.onerror = null;
+    };
+  }, [
+    etablissement_favicon?.id,
+    etablissement_favicon?.url_logo,
+    est_authentifie,
+    mode_affichage,
+    ecran_connexion_ouvert,
+    modale_nouvel_etablissement_ouverte,
+  ]);
+
   useEffect(() => {
     if (
       !utilisateur_actif.est_super_admin_plateforme &&
