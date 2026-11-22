@@ -146,6 +146,7 @@ interface ProfilApi {
   est_actif: boolean;
   affiliations: CompteUtilisateur['affiliations'];
   ids_apprenants_lies: string[];
+  url_avatar?: string | null;
 }
 
 export interface SaisieFondateurEtablissement {
@@ -2323,6 +2324,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         requeteApi<ProfilApi>('/auth/me/'),
         requeteApi<ConfigurationEtablissement[]>('/etablissements/'),
       ]);
+      const configuration_logo_api = await requeteApi<{ url_logo: string }>(
+        '/plateforme/configuration/'
+      );
       if (!profil.est_actif) {
         return { ok: false, erreur: 'Ce compte utilisateur est désactivé.' };
       }
@@ -2367,6 +2371,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         nom_complet: profil.nom_complet,
         courriel: profil.courriel,
         telephone: profil.telephone,
+        url_avatar: profil.url_avatar ?? undefined,
         affiliations: profil.affiliations,
         est_super_admin_plateforme: profil.est_super_admin_plateforme,
         est_actif: profil.est_actif,
@@ -2381,6 +2386,10 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           const nouvel_etat: EtatPersiste = {
             ...etat,
             ...donnees_api,
+            configuration_plateforme: {
+              ...etat.configuration_plateforme,
+              url_logo: configuration_logo_api.url_logo || undefined,
+            },
             etablissements: [],
             utilisateurs: [utilisateur_api],
             journaux_audit: [],
@@ -2432,6 +2441,10 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       const nouvel_etat: EtatPersiste = {
         ...etat,
         ...donnees_api,
+        configuration_plateforme: {
+          ...etat.configuration_plateforme,
+          url_logo: configuration_logo_api.url_logo || undefined,
+        },
         etablissements: etablissements_fusionnes,
         utilisateurs: utilisateurs_api,
         journaux_audit: journaux_audit_api,
@@ -7026,47 +7039,81 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         >
       >
     ) => {
-      const initiales_suivantes =
-        modifications.nom_complet !== undefined
-          ? modifications.nom_complet
-              .trim()
-              .split(/\s+/)
-              .filter(Boolean)
-              .slice(0, 2)
-              .map((m) => m[0]?.toUpperCase() ?? '')
-              .join('') || utilisateur_actif.initiales_avatar
-          : modifications.initiales_avatar ?? utilisateur_actif.initiales_avatar;
+      const appliquer_modifications = (
+        modifications_effectives: typeof modifications
+      ) => {
+        const initiales_suivantes =
+          modifications_effectives.nom_complet !== undefined
+            ? modifications_effectives.nom_complet
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((m) => m[0]?.toUpperCase() ?? '')
+                .join('') || utilisateur_actif.initiales_avatar
+            : modifications_effectives.initiales_avatar ?? utilisateur_actif.initiales_avatar;
 
-      definir_etat((precedent) => ({
-        ...precedent,
-        utilisateurs: precedent.utilisateurs.map((u) =>
-          u.id === utilisateur_actif.id
-            ? {
-                ...u,
-                ...modifications,
-                initiales_avatar: initiales_suivantes,
-              }
-            : u
-        ),
-      }));
+        definir_etat((precedent) => ({
+          ...precedent,
+          utilisateurs: precedent.utilisateurs.map((u) =>
+            u.id === utilisateur_actif.id
+              ? {
+                  ...u,
+                  ...modifications_effectives,
+                  initiales_avatar: initiales_suivantes,
+                }
+              : u
+          ),
+        }));
 
-      ajouter_entree_audit({
-        id_etablissement: etablissement_actif.id,
-        nom_acteur: modifications.nom_complet?.trim() || utilisateur_actif.nom_complet,
-        role_acteur: ROLES[id_role_actif].libelle,
-        action:
-          modifications.url_avatar !== undefined
-            ? 'Mise à jour photo de profil'
-            : 'Mise à jour du profil personnel',
-        cible: utilisateur_actif.courriel,
-        categorie: 'AUTH',
-      });
+        ajouter_entree_audit({
+          id_etablissement: etablissement_actif.id,
+          nom_acteur:
+            modifications_effectives.nom_complet?.trim() || utilisateur_actif.nom_complet,
+          role_acteur: ROLES[id_role_actif].libelle,
+          action:
+            Object.prototype.hasOwnProperty.call(modifications_effectives, 'url_avatar')
+              ? 'Mise à jour photo de profil'
+              : 'Mise à jour du profil personnel',
+          cible: utilisateur_actif.courriel,
+          categorie: 'AUTH',
+        });
 
-      ajouter_toast({
-        titre: 'Profil mis à jour',
-        description: 'Vos informations personnelles ont été enregistrées.',
-        variante: 'success',
-      });
+        ajouter_toast({
+          titre: 'Profil mis à jour',
+          description: 'Vos informations personnelles ont été enregistrées.',
+          variante: 'success',
+        });
+      };
+
+      if (
+        SOURCE_API &&
+        Object.prototype.hasOwnProperty.call(modifications, 'url_avatar')
+      ) {
+        void requeteApi<ProfilApi>('/auth/profile/', {
+          method: 'PATCH',
+          body: { url_avatar: modifications.url_avatar ?? null },
+        })
+          .then((profil) =>
+            appliquer_modifications({
+              ...modifications,
+              url_avatar: profil.url_avatar ?? undefined,
+            })
+          )
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Photo non enregistrée',
+              description:
+                erreur instanceof Error
+                  ? erreur.message
+                  : 'Le serveur n’a pas pu enregistrer la photo de profil.',
+              variante: 'error',
+            });
+          });
+        return;
+      }
+
+      appliquer_modifications(modifications);
     },
     [
       utilisateur_actif.id,
@@ -7203,24 +7250,61 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const mettre_a_jour_configuration_plateforme = useCallback(
     (modifications: Partial<ConfigurationPlateforme>) => {
-      definir_etat((precedent) => ({
-        ...precedent,
-        configuration_plateforme: { ...precedent.configuration_plateforme, ...modifications },
-      }));
-      ajouter_entree_audit({
-        id_etablissement: etablissement_actif.id,
-        nom_acteur: utilisateur_actif.nom_complet,
-        role_acteur: ROLES[id_role_actif].libelle,
-        action: 'Mise à jour configuration marque blanche plateforme',
-        cible:
-          modifications.nom_plateforme ?? etat.configuration_plateforme.nom_plateforme,
-        categorie: 'CONFIG',
-      });
-      ajouter_toast({
-        titre: 'Configuration plateforme enregistrée',
-        description: 'Identité, logo, slogan et coordonnées mis à jour partout.',
-        variante: 'success',
-      });
+      const appliquer_modifications = (
+        modifications_effectives: Partial<ConfigurationPlateforme>
+      ) => {
+        definir_etat((precedent) => ({
+          ...precedent,
+          configuration_plateforme: {
+            ...precedent.configuration_plateforme,
+            ...modifications_effectives,
+          },
+        }));
+        ajouter_entree_audit({
+          id_etablissement: etablissement_actif.id,
+          nom_acteur: utilisateur_actif.nom_complet,
+          role_acteur: ROLES[id_role_actif].libelle,
+          action: 'Mise à jour configuration marque blanche plateforme',
+          cible:
+            modifications_effectives.nom_plateforme ??
+            etat.configuration_plateforme.nom_plateforme,
+          categorie: 'CONFIG',
+        });
+        ajouter_toast({
+          titre: 'Configuration plateforme enregistrée',
+          description: 'Identité, logo, slogan et coordonnées mis à jour partout.',
+          variante: 'success',
+        });
+      };
+
+      if (
+        SOURCE_API &&
+        Object.prototype.hasOwnProperty.call(modifications, 'url_logo')
+      ) {
+        void requeteApi<{ url_logo: string }>('/plateforme/configuration/', {
+          method: 'PATCH',
+          body: { url_logo: modifications.url_logo ?? null },
+        })
+          .then((configuration) =>
+            appliquer_modifications({
+              ...modifications,
+              url_logo: configuration.url_logo || undefined,
+            })
+          )
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Logo non enregistré',
+              description:
+                erreur instanceof Error
+                  ? erreur.message
+                  : 'Le serveur n’a pas pu enregistrer le logo de la plateforme.',
+              variante: 'error',
+            });
+          });
+        return;
+      }
+
+      appliquer_modifications(modifications);
     },
     [
       etablissement_actif.id,

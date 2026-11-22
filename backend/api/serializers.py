@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 
 from comptes.models import Utilisateur
 
@@ -13,6 +14,7 @@ class ProfilUtilisateurSerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)
     est_actif = serializers.BooleanField(source="is_active", read_only=True)
     affiliations = AffiliationUtilisateurSerializer(many=True, read_only=True)
+    url_avatar = serializers.SerializerMethodField()
     ids_apprenants_lies = serializers.JSONField(
         source="profil.ids_apprenants_lies",
         read_only=True,
@@ -29,6 +31,11 @@ class ProfilUtilisateurSerializer(serializers.ModelSerializer):
             "est_super_admin_plateforme",
             "est_actif",
             "affiliations",
+            "url_avatar",
             "ids_apprenants_lies",
         )
         read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_blank=True, allow_null=True))
+    def get_url_avatar(self, utilisateur) -> str | None:
+        return (utilisateur.profil or {}).get("url_avatar")

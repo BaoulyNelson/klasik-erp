@@ -15,7 +15,10 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `POST` | `/api/auth/password/change/` | JWT d’accès | Change le mot de passe après validation du mot de passe actuel. |
 | `POST` | `/api/auth/google/` | Publique | Vérifie un jeton Google vérifié par courriel et renvoie des JWT uniquement si un compte local existe déjà. |
 | `POST` | `/api/auth/demo/` | Publique, développement seulement | Délivre un JWT de démonstration pour un utilisateur actif; répond 404 lorsque `DEBUG=false`. |
-| `GET` | `/api/auth/me/` | JWT d’accès | Profil courant sérialisé avec `id`, `courriel`, `nom_complet`, `telephone`, `role`, `est_super_admin_plateforme`, `est_actif`. |
+| `GET` | `/api/auth/me/` | JWT d’accès | Profil courant, affiliations relationnelles et photo de profil enregistrée. |
+| `PATCH` | `/api/auth/profile/` | JWT d’accès | Enregistre ou retire la photo de profil (`url_avatar`); image encodée limitée à 512 Ko. |
+| `GET` | `/api/plateforme/configuration/` | JWT d’accès | Renvoie le logo global persistant de la plateforme. |
+| `PATCH` | `/api/plateforme/configuration/` | JWT d’accès et rôle super-administrateur plateforme | Enregistre ou retire le logo global (`url_logo`); image encodée limitée à 512 Ko. |
 | `GET` | `/api/etablissements/` | JWT d’accès | Établissements affiliés à l’utilisateur; le super-administrateur plateforme peut les lister tous. |
 | `PATCH` | `/api/etablissements/{id_etablissement}/` | JWT et permission `parametres:gerer` | Met à jour les paramètres ou le statut de l’établissement autorisé; l’identifiant est immuable et l’action est auditée. |
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/unites/` | JWT et permission scolaire/paramètres | Ressource relationnelle typée des unités académiques, avec recherche, filtre, tri et pagination; pagination DRF standard. |

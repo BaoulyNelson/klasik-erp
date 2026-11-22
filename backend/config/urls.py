@@ -10,6 +10,7 @@ from api.views import (
     ConnexionDemoView,
     DemanderReinitialisationView,
     ObtenirJetonsVerrouilleView,
+    PhotoProfilView,
     ProfilCourantView,
     SanteView,
 )
@@ -22,6 +23,7 @@ urlpatterns = [
     path("api/auth/token/blacklist/", TokenBlacklistView.as_view(), name="revoquer-jeton"),
     path("api/auth/demo/", ConnexionDemoView.as_view(), name="connexion-demo"),
     path("api/auth/me/", ProfilCourantView.as_view(), name="profil-courant"),
+    path("api/auth/profile/", PhotoProfilView.as_view(), name="photo-profil"),
     path("api/auth/password/reset/", DemanderReinitialisationView.as_view(), name="demander-reinitialisation"),
     path("api/auth/password/reset/confirm/", ConfirmerReinitialisationView.as_view(), name="confirmer-reinitialisation"),
     path("api/auth/password/change/", ChangerMotDePasseView.as_view(), name="changer-mot-de-passe"),

@@ -332,6 +332,7 @@ class ListeUtilisateursTenantView(APIView):
             "initiales_avatar": initiales,
             "est_super_admin_plateforme": utilisateur.est_super_admin_plateforme,
             "est_actif": utilisateur.est_actif,
+            "url_avatar": profil.get("url_avatar"),
             "double_facteur_actif": profil.get("double_facteur_actif", False),
             "doit_changer_mot_de_passe": profil.get("doit_changer_mot_de_passe", False),
             "mot_de_passe_mis_a_jour_le": profil.get("mot_de_passe_mis_a_jour_le"),

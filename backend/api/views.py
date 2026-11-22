@@ -17,6 +17,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from api.serializers import ProfilUtilisateurSerializer
 from comptes.models import AffiliationEtablissement, JetonReinitialisation, Utilisateur
+from etablissements.models import ConfigurationMarquePlateforme
+from api.validators import valider_url_image
 
 
 class SanteView(APIView):
@@ -42,6 +44,66 @@ class ProfilCourantView(APIView):
     @extend_schema(responses=ProfilUtilisateurSerializer)
     def get(self, request):
         return Response(ProfilUtilisateurSerializer(request.user).data)
+
+
+class PhotoProfilView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=ProfilUtilisateurSerializer)
+    def patch(self, request):
+        if not isinstance(request.data, dict) or "url_avatar" not in request.data:
+            raise ValidationError({"url_avatar": "Le champ url_avatar est obligatoire."})
+        url_avatar = request.data["url_avatar"]
+        profil = dict(request.user.profil or {})
+        if url_avatar is None or url_avatar == "":
+            profil.pop("url_avatar", None)
+        else:
+            profil["url_avatar"] = valider_url_image(url_avatar, "url_avatar")
+        request.user.profil = profil
+        request.user.save(update_fields=("profil", "modifie_le"))
+        return Response(ProfilUtilisateurSerializer(request.user).data)
+
+
+class ConfigurationPlateformeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses=inline_serializer(
+            name="LogoPlateforme",
+            fields={"url_logo": serializers.CharField(allow_blank=True)},
+        )
+    )
+    def get(self, request):
+        configuration = ConfigurationMarquePlateforme.objects.filter(
+            pk="principale"
+        ).first()
+        return Response({"url_logo": configuration.url_logo if configuration else ""})
+
+    @extend_schema(
+        request=inline_serializer(
+            name="ModifierLogoPlateforme",
+            fields={"url_logo": serializers.CharField(allow_blank=True, allow_null=True)},
+        ),
+        responses=OpenApiTypes.OBJECT,
+    )
+    def patch(self, request):
+        if not request.user.est_super_admin_plateforme:
+            raise PermissionDenied(
+                "Seul un super-administrateur plateforme peut modifier le logo."
+            )
+        if not isinstance(request.data, dict) or set(request.data) != {"url_logo"}:
+            raise ValidationError({"url_logo": "Le champ url_logo est obligatoire."})
+        url_logo = request.data["url_logo"]
+        if url_logo is None or url_logo == "":
+            url_logo = ""
+        else:
+            url_logo = valider_url_image(url_logo, "url_logo")
+        configuration, _ = ConfigurationMarquePlateforme.objects.get_or_create(
+            pk="principale"
+        )
+        configuration.url_logo = url_logo
+        configuration.save(update_fields=("url_logo", "modifie_le"))
+        return Response({"url_logo": configuration.url_logo})
 
 
 class ConnexionDemoView(APIView):

@@ -72,6 +72,16 @@ class Etablissement(models.Model):
         return f"{self.nom} ({self.code})"
 
 
+class ConfigurationMarquePlateforme(models.Model):
+    cle = models.CharField(max_length=32, primary_key=True, default="principale")
+    url_logo = models.TextField(blank=True, default="")
+    modifie_le = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "configuration de marque plateforme"
+        verbose_name_plural = "configuration de marque plateforme"
+
+
 class CompteBancaire(models.Model):
     id = models.CharField(max_length=128, primary_key=True)
     etablissement = models.ForeignKey(

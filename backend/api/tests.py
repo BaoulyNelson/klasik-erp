@@ -212,6 +212,57 @@ class TestsAuthentificationApi(TestCase):
             ],
         )
 
+    def test_photo_profil_est_persistante_et_supprimable(self):
+        self.client.force_authenticate(self.utilisateur)
+        url_avatar = "data:image/jpeg;base64,/9j/2Q=="
+
+        mise_a_jour = self.client.patch(
+            "/api/auth/profile/",
+            {"url_avatar": url_avatar},
+            format="json",
+        )
+        profil = self.client.get("/api/auth/me/")
+
+        self.assertEqual(mise_a_jour.status_code, 200)
+        self.assertEqual(mise_a_jour.json()["url_avatar"], url_avatar)
+        self.assertEqual(profil.json()["url_avatar"], url_avatar)
+        self.utilisateur.refresh_from_db()
+        self.assertEqual(self.utilisateur.profil["url_avatar"], url_avatar)
+
+        suppression = self.client.patch(
+            "/api/auth/profile/",
+            {"url_avatar": None},
+            format="json",
+        )
+        self.assertEqual(suppression.status_code, 200)
+        self.assertIsNone(suppression.json()["url_avatar"])
+
+    def test_logo_plateforme_est_persistant_et_reserve_au_superadmin(self):
+        url_logo = "data:image/png;base64,iVBORw0KGgo="
+        self.client.force_authenticate(self.utilisateur)
+        refusee = self.client.patch(
+            "/api/plateforme/configuration/",
+            {"url_logo": url_logo},
+            format="json",
+        )
+        self.assertEqual(refusee.status_code, 403)
+
+        superutilisateur = Utilisateur.objects.create_superuser(
+            "logo.plateforme@example.org",
+            "MotDePasseLogo-2026",
+        )
+        self.client.force_authenticate(superutilisateur)
+        modification = self.client.patch(
+            "/api/plateforme/configuration/",
+            {"url_logo": url_logo},
+            format="json",
+        )
+        lecture = self.client.get("/api/plateforme/configuration/")
+
+        self.assertEqual(modification.status_code, 200)
+        self.assertEqual(lecture.status_code, 200)
+        self.assertEqual(lecture.json()["url_logo"], url_logo)
+
     def test_connexion_refuse_un_mot_de_passe_invalide_en_francais(self):
         reponse = self.client.post(
             "/api/auth/token/",

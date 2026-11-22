@@ -1,6 +1,7 @@
 from django.urls import path
 
 from api.file_views import LectureFichierView, TeleversementFichierTenantView
+from api.views import ConfigurationPlateformeView
 from api.tenant_views import (
     CollectionTenantView,
     DetailEtablissementTenantView,
@@ -14,6 +15,11 @@ from api.tenant_views import (
 
 urlpatterns = [
     path("etablissements/", ListeEtablissementsView.as_view(), name="liste-etablissements"),
+    path(
+        "plateforme/configuration/",
+        ConfigurationPlateformeView.as_view(),
+        name="configuration-plateforme",
+    ),
     path(
         "etablissements/<str:id_etablissement>/",
         DetailEtablissementTenantView.as_view(),
