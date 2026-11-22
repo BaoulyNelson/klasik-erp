@@ -50,6 +50,11 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/devoirs_lms/` | JWT avec `campus_numerique:voir` / `pedagogie:noter` | Devoirs LMS tenant-scopés. |
 | `POST` | `/api/etablissements/{id_etablissement}/devoirs_lms/{id}/cloturer/` | JWT avec `pedagogie:noter` | Action métier clôturant un devoir. |
 | `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/remises_devoirs_lms/` | JWT avec périmètre apprenant/enseignant | Remises de devoir tenant-scopées. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/consentements_rgpd/` | JWT avec `rgpd:gerer` | Consentements RGPD tenant-scopés. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/demandes_rgpd/` | JWT avec `rgpd:gerer` | Demandes RGPD tenant-scopées. |
+| `POST` | `/api/etablissements/{id_etablissement}/demandes_rgpd/{id}/traiter/` | JWT avec `rgpd:gerer` | Action de traitement auditée d’une demande RGPD. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/journaux_importations/` | JWT avec `importations:gerer` | Lots d’importation tenant-scopés. |
+| `GET, POST, PATCH, DELETE` | `/api/etablissements/{id_etablissement}/badges_attribues/` | JWT avec `badges:voir` / `badges:gerer` | Attributions de badges tenant-scopées. |
 | `GET` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Liste les surcharges RBAC configurées dans l’établissement. |
 | `PUT` | `/api/etablissements/{id_etablissement}/permissions/` | JWT et permission `roles:gerer` | Enregistre les permissions d’un rôle du tenant; le rôle `SUPER_ADMIN` ne peut pas être modifié. Chaque changement est inscrit dans le journal d’audit serveur. |
 | `GET` | `/api/etablissements/{id_etablissement}/utilisateurs/` | JWT et permission `comptes:gerer` | Liste les comptes affiliés à cet établissement et uniquement leur affiliation dans ce tenant; aucun mot de passe n’est renvoyé. |

@@ -294,6 +294,10 @@ const COLLECTIONS_RELATIONNELLES_TYPED = new Set([
   'ressources_lms',
   'devoirs_lms',
   'remises_devoirs_lms',
+  'consentements_rgpd',
+  'demandes_rgpd',
+  'journaux_importations',
+  'badges_attribues',
 ]);
 
 async function charger_collection_api(
