@@ -22,6 +22,19 @@ from pedagogie.models import (
     PersonnelEnseignant,
 )
 from finances.models import Depense, Paiement
+from communication.models import ArticleActualite, MessageCommunication, Notification
+from documents.models import DocumentOfficiel
+from services_annexes.models import (
+    AncienEtudiant,
+    ArticleInventaire,
+    EmpruntBibliotheque,
+    IncidentDiscipline,
+    LivreBibliotheque,
+    PretMateriel,
+    VisiteInfirmerie,
+)
+from campus_numerique.models import DevoirLms, RemiseDevoir, RessourceLms
+from securite.models import AttributionBadge, ConsentementRgpd, DemandeRgpd, LotImportation
 
 Utilisateur = get_user_model()
 
@@ -577,6 +590,336 @@ class TestsApiMultitenant(TestCase):
             f"/api/etablissements/{self.etablissement.id}/audit/"
         )
         self.assertEqual(role_sans_audit.status_code, 403)
+
+
+class TestsPreuvesDomainesRelationnels(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.tenant = Etablissement.objects.create(
+            id="tenant-preuves-a",
+            code="PREUVES-A",
+            nom="Établissement preuves A",
+            nom_court="Preuves A",
+            type="SCOLAIRE",
+        )
+        self.autre_tenant = Etablissement.objects.create(
+            id="tenant-preuves-b",
+            code="PREUVES-B",
+            nom="Établissement preuves B",
+            nom_court="Preuves B",
+            type="SCOLAIRE",
+        )
+        self.utilisateur = Utilisateur.objects.create_user(
+            courriel="preuve.admin@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Administrateur preuve",
+            role="ADMIN_ETAB",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=self.tenant,
+            role="ADMIN_ETAB",
+        )
+        self.client.force_authenticate(self.utilisateur)
+        self.unite = UniteAcademique.objects.create(
+            id="unite-preuves",
+            etablissement=self.tenant,
+            code="UN-PREUVES",
+            nom="Unité preuves",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        self.element = ElementPedagogique.objects.create(
+            id="element-preuves",
+            etablissement=self.tenant,
+            unite=self.unite,
+            code="EL-PREUVES",
+            nom="Épreuve",
+            nature="MATIERE",
+            coefficient_ou_credits=5,
+            volume_horaire_total=100,
+        )
+        self.apprenant = Apprenant.objects.create(
+            id="apprenant-preuves",
+            etablissement=self.tenant,
+            unite=self.unite,
+            matricule="PREUVES-001",
+            prenom="Ada",
+            nom="Preuve",
+            sexe="F",
+            indice_etape=3,
+        )
+
+    def test_documents_communication_notifications_contrats_tenant(self):
+        document = DocumentOfficiel.objects.create(
+            id="document-preuve",
+            etablissement=self.tenant,
+            apprenant=self.apprenant,
+            numero_document="DOC-PREUVE-001",
+            type_document="Bulletin",
+            emis_le="2026-11-22",
+            emis_par="Administration",
+            empreinte_verification="empreinte-preuve",
+        )
+        message = MessageCommunication.objects.create(
+            id="communication-preuve",
+            etablissement=self.tenant,
+            titre="Information",
+            contenu="Contenu preuve",
+            canal="Interne",
+            audience="Tous",
+            envoye_le="2026-11-22",
+            envoye_par="Administration",
+        )
+        notification = Notification.objects.create(
+            id="notification-preuve",
+            etablissement=self.tenant,
+            titre="Notification preuve",
+            description="Description preuve",
+            cree_le="2026-11-22",
+        )
+        article = ArticleActualite.objects.create(
+            id="article-preuve",
+            etablissement=self.tenant,
+            titre="Article preuve",
+            categorie="Académique",
+            resume="Résumé",
+            contenu="Contenu",
+            publie_le="2026-11-22",
+            nom_auteur="Administration",
+            audience="Tous",
+        )
+
+        document_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/documents/{document.id}/"
+        )
+        communication_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/communications/{message.id}/"
+        )
+        notification_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/notifications/{notification.id}/"
+        )
+        article_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/articles_actualites/{article.id}/"
+        )
+        notification_lue = self.client.post(
+            f"/api/etablissements/{self.tenant.id}/notifications/{notification.id}/marquer-lue/"
+        )
+
+        self.assertEqual(document_reponse.status_code, 200)
+        self.assertEqual(document_reponse.json()["id_apprenant"], "apprenant-preuves")
+        self.assertEqual(document_reponse.json()["empreinte_verification"], "empreinte-preuve")
+        self.assertEqual(communication_reponse.status_code, 200)
+        self.assertEqual(communication_reponse.json()["nombre_destinataires"], 0)
+        self.assertEqual(notification_reponse.status_code, 200)
+        self.assertEqual(article_reponse.status_code, 200)
+        self.assertEqual(notification_lue.status_code, 200)
+        self.assertTrue(notification_lue.json()["lue"])
+
+    def test_services_annexes_contrats_tenant(self):
+        livre = LivreBibliotheque.objects.create(
+            id="livre-preuve",
+            etablissement=self.tenant,
+            isbn="978-PREUVE",
+            titre="Livre preuve",
+            auteur="Auteur preuve",
+            categorie="Manuel",
+            exemplaires_totaux=3,
+            exemplaires_disponibles=2,
+        )
+        inventaire = ArticleInventaire.objects.create(
+            id="inventaire-preuve",
+            etablissement=self.tenant,
+            code="INV-PREUVE",
+            nom="Article preuve",
+            categorie="Atelier",
+            quantite=5,
+            quantite_disponible=4,
+            etat="Bon état",
+            emplacement="Atelier",
+        )
+        emprunt = EmpruntBibliotheque.objects.create(
+            id="emprunt-preuve",
+            etablissement=self.tenant,
+            livre=livre,
+            apprenant=self.apprenant,
+            emprunte_le="2026-11-22",
+            retour_prevu_le="2026-12-22",
+        )
+
+        livre_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/livres_bibliotheque/{livre.id}/"
+        )
+        emprunt_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/emprunts_bibliotheque/{emprunt.id}/"
+        )
+        inventaire_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/inventaire/{inventaire.id}/"
+        )
+        autre_tenant = self.client.get(
+            f"/api/etablissements/{self.autre_tenant.id}/livres_bibliotheque/"
+        )
+
+        self.assertEqual(livre_reponse.status_code, 200)
+        self.assertEqual(livre_reponse.json()["isbn"], "978-PREUVE")
+        self.assertEqual(emprunt_reponse.status_code, 200)
+        self.assertEqual(emprunt_reponse.json()["id_apprenant"], "apprenant-preuves")
+        self.assertEqual(inventaire_reponse.status_code, 200)
+        self.assertEqual(inventaire_reponse.json()["quantite_disponible"], 4)
+        self.assertEqual(autre_tenant.status_code, 403)
+
+    def test_lms_contrats_et_cloture_action(self):
+        ressource = RessourceLms.objects.create(
+            id="ressource-preuve",
+            etablissement=self.tenant,
+            unite=self.unite,
+            element=self.element,
+            titre="Ressource preuve",
+            type_ressource="Cours PDF",
+            url_ou_code="#fichier-local/preuve",
+            publie_le="2026-11-22",
+            nom_auteur="Professeur preuve",
+        )
+        devoir = DevoirLms.objects.create(
+            id="devoir-preuve",
+            etablissement=self.tenant,
+            unite=self.unite,
+            element=self.element,
+            titre="Devoir preuve",
+            date_limite="2026-12-01",
+            points_max=20,
+            statut="OUVERT",
+        )
+        remise = RemiseDevoir.objects.create(
+            id="remise-preuve",
+            etablissement=self.tenant,
+            devoir=devoir,
+            apprenant=self.apprenant,
+            statut="ASSIGNE",
+        )
+        directeur_etudes = Utilisateur.objects.create_user(
+            courriel="preuves.dir.etudes@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Directeur études preuve",
+            role="DIR_ETUDES",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=directeur_etudes,
+            etablissement=self.tenant,
+            role="DIR_ETUDES",
+        )
+        self.client.force_authenticate(directeur_etudes)
+
+        ressource_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/ressources_lms/{ressource.id}/"
+        )
+        devoir_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/devoirs_lms/{devoir.id}/"
+        )
+        remise_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/remises_devoirs_lms/{remise.id}/"
+        )
+        cloture = self.client.post(
+            f"/api/etablissements/{self.tenant.id}/devoirs_lms/{devoir.id}/cloturer/"
+        )
+
+        self.assertEqual(ressource_reponse.status_code, 200)
+        self.assertEqual(ressource_reponse.json()["id_element"], "element-preuves")
+        self.assertEqual(devoir_reponse.status_code, 200)
+        self.assertEqual(devoir_reponse.json()["points_max"], 20)
+        self.assertEqual(remise_reponse.status_code, 200)
+        self.assertEqual(remise_reponse.json()["id_apprenant"], "apprenant-preuves")
+        self.assertEqual(cloture.status_code, 200)
+        self.assertEqual(cloture.json()["statut"], "CLOTURE")
+
+    def test_securite_rgpd_imports_badges_contrats_et_action(self):
+        consentement = ConsentementRgpd.objects.create(
+            id="consentement-preuve",
+            etablissement=self.tenant,
+            apprenant=self.apprenant,
+            droit_image=True,
+            traitement_donnees=True,
+            accord_parental=True,
+            consentement_sms_whatsapp=True,
+            mis_a_jour_le="2026-11-22",
+            mis_a_jour_par="Administration",
+        )
+        demande = DemandeRgpd.objects.create(
+            id="demande-preuve",
+            etablissement=self.tenant,
+            apprenant=self.apprenant,
+            type_demande="EXPORT_DONNEES",
+            demandee_le="2026-11-22",
+        )
+        importation = LotImportation.objects.create(
+            id="import-preuve",
+            etablissement=self.tenant,
+            cible="apprenants",
+            nom_fichier="apprenants.csv",
+            statut="TERMINE",
+            nombre_lignes=10,
+            nombre_erreurs=0,
+            importe_le="2026-11-22",
+            importe_par="Administration",
+        )
+        badge = AttributionBadge.objects.create(
+            id="badge-preuve",
+            etablissement=self.tenant,
+            apprenant=self.apprenant,
+            code_badge="EXCELLENCE",
+            titre="Excellence",
+            attribue_le="2026-11-22",
+            attribue_par="Administration",
+        )
+
+        consentement_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/consentements_rgpd/{consentement.id}/"
+        )
+        demande_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/demandes_rgpd/{demande.id}/"
+        )
+        import_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/journaux_importations/{importation.id}/"
+        )
+        badge_reponse = self.client.get(
+            f"/api/etablissements/{self.tenant.id}/badges_attribues/{badge.id}/"
+        )
+        traitement = self.client.post(
+            f"/api/etablissements/{self.tenant.id}/demandes_rgpd/{demande.id}/traiter/",
+            {"traitee_le": "2026-11-22", "observations": "Demande traitée"},
+            format="json",
+        )
+
+        self.assertEqual(consentement_reponse.status_code, 200)
+        self.assertTrue(consentement_reponse.json()["droit_image"])
+        self.assertEqual(demande_reponse.status_code, 200)
+        self.assertEqual(import_reponse.status_code, 200)
+        self.assertEqual(import_reponse.json()["nombre_lignes"], 10)
+        self.assertEqual(badge_reponse.status_code, 200)
+        self.assertEqual(badge_reponse.json()["code_badge"], "EXCELLENCE")
+        self.assertEqual(traitement.status_code, 200)
+        self.assertEqual(traitement.json()["statut"], "TRAITEE")
+
+    def test_seed_relationnel_domains_rejoue_idempotemment(self):
+        call_command("seed_demo")
+        nombre_premier = {
+            "unites": UniteAcademique.objects.count(),
+            "elements": ElementPedagogique.objects.count(),
+            "apprenants": Apprenant.objects.count(),
+            "documents": DocumentOfficiel.objects.count(),
+            "communications": MessageCommunication.objects.count(),
+        }
+        call_command("seed_demo")
+        nombre_second = {
+            "unites": UniteAcademique.objects.count(),
+            "elements": ElementPedagogique.objects.count(),
+            "apprenants": Apprenant.objects.count(),
+            "documents": DocumentOfficiel.objects.count(),
+            "communications": MessageCommunication.objects.count(),
+        }
+        self.assertEqual(nombre_second, nombre_premier)
+        self.assertGreater(nombre_second["unites"], 0)
+        self.assertGreater(nombre_second["apprenants"], 0)
 
 
 class TestsContratsFinancesRelationnelles(TestCase):

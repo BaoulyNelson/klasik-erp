@@ -20,6 +20,12 @@ class DevoirLmsSerializer(serializers.ModelSerializer):
         model = DevoirLms
         fields = ["id","id_etablissement","id_unite","id_element","titre","type_devoir","theme_ou_chapitre","consignes","publie_le","cree_par","date_limite","points_max","nombre_rendus","total_attendu","statut","pieces_jointes","criteres_grille","commentaires_classe"]
 
+    def to_representation(self, instance):
+        donnees = super().to_representation(instance)
+        valeur = instance.points_max
+        donnees["points_max"] = int(valeur) if valeur == valeur.to_integral() else float(valeur)
+        return donnees
+
 
 class RemiseDevoirSerializer(serializers.ModelSerializer):
     id_etablissement = serializers.CharField(source="etablissement_id", read_only=True)
