@@ -6,6 +6,7 @@
 - Modèles relationnels par domaine prioritaires avec migrations.
 - Tests Django tenant/autorisations/actions.
 - Build TypeScript et build Vite réussis.
+- Configuration Docker Compose backend/PostgreSQL/frontend ajoutée.
 
 ## Non terminé ou non vérifié
 

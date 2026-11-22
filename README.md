@@ -78,4 +78,13 @@ Le backend fournit JWT, profil courant, `/api/sante/`, OpenAPI, la liste des uti
 
 ## État de migration
 
+## Déploiement Docker local
+
+```powershell
+$env:POSTGRES_PASSWORD="mot-de-passe-fort"
+docker compose up --build
+```
+
+Cette configuration lance PostgreSQL, Django sur `8000` et le frontend/nginx sur `3000`, avec le proxy `/api/` vers Django.
+
 Le frontend conserve sa source locale par défaut et peut être lancé en mode API. Les deux modes d’authentification et les données de démonstration sont disponibles; certaines fonctions restent locales et les modèles métier utilisent actuellement un stockage JSON commun. Les rapports de phases listent les écarts qui empêchent encore d’annoncer la parité complète ou de supprimer Firebase.
