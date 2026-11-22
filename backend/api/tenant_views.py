@@ -20,7 +20,7 @@ from api.permissions import (
     role_utilisateur_etablissement,
 )
 from donnees.models import EnregistrementMetier, EntreeAuditApi
-from etablissements.models import Etablissement
+from etablissements.models import Etablissement, TypeEtablissement
 
 COLLECTIONS_GLOBALES = {"etablissements", "configuration_plateforme"}
 
@@ -64,6 +64,18 @@ def _enregistrer_audit_api(request, etablissement, action, collection, id_objet)
         collection=collection,
         id_objet=id_objet,
     )
+
+
+def _serialiser_etablissement(etablissement: Etablissement) -> dict:
+    return {
+        **etablissement.configuration,
+        "id": etablissement.id,
+        "code": etablissement.code,
+        "nom": etablissement.nom,
+        "nom_court": etablissement.nom_court,
+        "type": etablissement.type,
+        "statut": "ACTIF" if etablissement.est_actif else "SUSPENDU",
+    }
 
 
 def _perimetre_utilisateur(utilisateur, role, etablissement) -> dict[str, set[str]]:
@@ -159,18 +171,74 @@ class ListeEtablissementsView(APIView):
             ).distinct()
         resultats = []
         for etablissement in etablissements:
-            resultats.append(
-                {
-                    **etablissement.configuration,
-                    "id": etablissement.id,
-                    "code": etablissement.code,
-                    "nom": etablissement.nom,
-                    "nom_court": etablissement.nom_court,
-                    "type": etablissement.type,
-                    "statut": "ACTIF" if etablissement.est_actif else "SUSPENDU",
-                }
-            )
+            resultats.append(_serialiser_etablissement(etablissement))
         return Response(resultats)
+
+
+class DetailEtablissementTenantView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        operation_id="modifierConfigurationEtablissement",
+        request=OpenApiTypes.OBJECT,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @transaction.atomic
+    def patch(self, request, id_etablissement: str):
+        etablissement = _obtenir_etablissement(id_etablissement)
+        _verifier_permission(request, etablissement, "parametres:gerer")
+        if not isinstance(request.data, dict):
+            raise ValidationError("Le corps de la requête doit être un objet JSON.")
+
+        modifications = dict(request.data)
+        identifiant = modifications.pop("id", id_etablissement)
+        if identifiant != id_etablissement:
+            raise ValidationError({"id": "L’identifiant de l’établissement ne peut pas changer."})
+
+        if "nom" in modifications:
+            nom = modifications.pop("nom")
+            if not isinstance(nom, str) or not nom.strip() or len(nom.strip()) > 191:
+                raise ValidationError({"nom": "Le nom de l’établissement est invalide."})
+            etablissement.nom = nom.strip()
+        if "nom_court" in modifications:
+            nom_court = modifications.pop("nom_court")
+            if not isinstance(nom_court, str) or len(nom_court.strip()) > 100:
+                raise ValidationError({"nom_court": "Le nom court de l’établissement est invalide."})
+            etablissement.nom_court = nom_court.strip()
+        if "code" in modifications:
+            code = modifications.pop("code")
+            if not isinstance(code, str) or not code.strip() or len(code.strip()) > 64:
+                raise ValidationError({"code": "Le code de l’établissement est invalide."})
+            etablissement.code = code.strip()
+        if "type" in modifications:
+            type_etablissement = modifications.pop("type")
+            if type_etablissement not in TypeEtablissement.values:
+                raise ValidationError({"type": "Le type d’établissement est invalide."})
+            etablissement.type = type_etablissement
+        if "statut" in modifications:
+            statut = modifications.pop("statut")
+            if not isinstance(statut, str) or statut not in {"ACTIF", "SUSPENDU"}:
+                raise ValidationError({"statut": "Le statut doit être ACTIF ou SUSPENDU."})
+            etablissement.est_actif = statut == "ACTIF"
+
+        if modifications:
+            etablissement.configuration = {
+                **etablissement.configuration,
+                **modifications,
+            }
+        try:
+            etablissement.save()
+        except IntegrityError as erreur:
+            raise ValidationError({"code": "Ce code d’établissement est déjà utilisé."}) from erreur
+
+        _enregistrer_audit_api(
+            request,
+            etablissement,
+            "MODIFICATION",
+            "etablissements",
+            etablissement.id,
+        )
+        return Response(_serialiser_etablissement(etablissement))
 
 
 class PermissionsRolesTenantView(APIView):

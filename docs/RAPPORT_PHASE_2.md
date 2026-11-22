@@ -8,6 +8,7 @@
 - API tenant-scopée de lecture et de mise à jour des surcharges RBAC, réservée aux utilisateurs ayant `roles:gerer`; le rôle `SUPER_ADMIN` reste non modifiable et chaque changement est audité.
 - Endpoint de lecture des utilisateurs d’un établissement, réservé à `comptes:gerer` et limité aux affiliations du tenant demandé; le frontend en mode API n’utilise plus le catalogue d’utilisateurs de démonstration dans l’écran RBAC.
 - Consultation du journal d’audit serveur tenant-scopé, avec instantané du nom et du rôle de l’acteur enregistré à chaque action API; migration `0003` ajoutée et lecture chargée au changement d’établissement.
+- Mise à jour API des paramètres et du statut d’un établissement avec permission `parametres:gerer`; le frontend n’affiche le succès qu’après la réponse serveur.
 - Tests couvrant JWT, refus d’accès, frontières de tenant, restrictions parentales, CRUD et import de démonstration.
 - Aucun fichier existant supprimé. Les mots de passe de démonstration ne sont pas importés comme mots de passe Django.
 
@@ -20,7 +21,7 @@ La phase est **partielle** : l’API conserve les formes JSON existantes dans un
 - `manage.py check` : réussi.
 - `manage.py makemigrations --check --dry-run` : aucune migration manquante.
 - `manage.py test api` : tests d’authentification, CRUD, permissions et isolation multitenant réussis.
-- Après ajout des API RBAC, utilisateurs et audit : 22 tests Django réussis, y compris les refus d’un rôle sans autorisation et d’un établissement non affilié.
+- Après ajout des API RBAC, utilisateurs, audit et configuration établissement : 23 tests Django réussis, y compris les refus d’un rôle sans autorisation et d’un établissement non affilié.
 - Le test de visibilité des comptes confirme que les affiliations d’un autre tenant et tout mot de passe sont absents de la réponse.
 - Parcours navigateur en mode API : connexion démo via JWT et affichage des données de l’API vérifiés; les endpoints de permissions et d’utilisateurs du tenant répondent 200. Les 403 sur les collections sans droit sont attendus et sont filtrés côté frontend.
 - `seed_demo` : 5 établissements, 14 utilisateurs et 494 enregistrements métier; l’idempotence est vérifiée par test.

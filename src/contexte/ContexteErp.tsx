@@ -1613,6 +1613,37 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         modifications = { ...modifications, telephone: check_tel.numero_normalise };
       }
 
+      if (SOURCE_API) {
+        void requeteApi<ConfigurationEtablissement>(
+          `/etablissements/${encodeURIComponent(id_etablissement)}/`,
+          { method: 'PATCH', body: modifications }
+        )
+          .then((etablissement_api) => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              etablissements: precedent.etablissements.map((etablissement) =>
+                etablissement.id === id_etablissement ? etablissement_api : etablissement
+              ),
+            }));
+            ajouter_toast({
+              titre: 'Configuration enregistrée',
+              description: 'Les paramètres de l’établissement ont été mis à jour.',
+              variante: 'success',
+            });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Configuration non enregistrée',
+              description:
+                erreur instanceof Error
+                  ? erreur.message
+                  : 'Le serveur n’a pas pu enregistrer les paramètres.',
+              variante: 'error',
+            });
+          });
+        return true;
+      }
+
       definir_etat((precedent) => ({
         ...precedent,
         etablissements: precedent.etablissements.map((e) =>
@@ -1650,6 +1681,43 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       if (!cible) return;
       const statut_suivant: ConfigurationEtablissement['statut'] =
         cible.statut === 'SUSPENDU' ? 'ACTIF' : 'SUSPENDU';
+
+      if (SOURCE_API) {
+        void requeteApi<ConfigurationEtablissement>(
+          `/etablissements/${encodeURIComponent(id_etablissement)}/`,
+          { method: 'PATCH', body: { statut: statut_suivant } }
+        )
+          .then((etablissement_api) => {
+            definir_etat((precedent) => ({
+              ...precedent,
+              etablissements: precedent.etablissements.map((etablissement) =>
+                etablissement.id === id_etablissement ? etablissement_api : etablissement
+              ),
+            }));
+            ajouter_toast({
+              titre:
+                statut_suivant === 'SUSPENDU'
+                  ? `${cible.nom_court} suspendu`
+                  : `${cible.nom_court} réactivé`,
+              description:
+                statut_suivant === 'SUSPENDU'
+                  ? 'Les accès opérationnels de cet établissement sont temporairement bloqués.'
+                  : 'Les utilisateurs de cet établissement peuvent de nouveau travailler.',
+              variante: statut_suivant === 'SUSPENDU' ? 'warning' : 'success',
+            });
+          })
+          .catch((erreur: unknown) => {
+            ajouter_toast({
+              titre: 'Statut non modifié',
+              description:
+                erreur instanceof Error
+                  ? erreur.message
+                  : 'Le serveur n’a pas pu modifier le statut.',
+              variante: 'error',
+            });
+          });
+        return;
+      }
 
       definir_etat((precedent) => ({
         ...precedent,

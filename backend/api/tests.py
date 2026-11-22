@@ -371,6 +371,32 @@ class TestsApiMultitenant(TestCase):
         )
         self.assertEqual(reponse_interdite.status_code, 403)
 
+    def test_modification_etablissement_est_autorisee_et_tenant_scopee(self):
+        modification = self.client.patch(
+            f"/api/etablissements/{self.etablissement.id}/",
+            {"ville": "Cap-Haïtien", "statut": "SUSPENDU"},
+            format="json",
+        )
+        modification_autre_tenant = self.client.patch(
+            f"/api/etablissements/{self.autre_etablissement.id}/",
+            {"ville": "Ville non autorisée"},
+            format="json",
+        )
+
+        self.assertEqual(modification.status_code, 200)
+        self.assertEqual(modification.json()["ville"], "Cap-Haïtien")
+        self.assertEqual(modification.json()["statut"], "SUSPENDU")
+        self.assertEqual(modification_autre_tenant.status_code, 403)
+        self.etablissement.refresh_from_db()
+        self.assertEqual(self.etablissement.configuration["ville"], "Cap-Haïtien")
+        self.assertFalse(self.etablissement.est_actif)
+        statut_invalide = self.client.patch(
+            f"/api/etablissements/{self.etablissement.id}/",
+            {"statut": []},
+            format="json",
+        )
+        self.assertEqual(statut_invalide.status_code, 400)
+
     def test_journal_audit_est_tenant_scopee_et_refuse_un_role_sans_droit(self):
         EntreeAuditApi.objects.create(
             etablissement=self.etablissement,

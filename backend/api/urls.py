@@ -3,6 +3,7 @@ from django.urls import path
 from api.file_views import LectureFichierView, TeleversementFichierTenantView
 from api.tenant_views import (
     CollectionTenantView,
+    DetailEtablissementTenantView,
     DetailEnregistrementTenantView,
     JournalAuditTenantView,
     ListeEtablissementsView,
@@ -12,6 +13,11 @@ from api.tenant_views import (
 
 urlpatterns = [
     path("etablissements/", ListeEtablissementsView.as_view(), name="liste-etablissements"),
+    path(
+        "etablissements/<str:id_etablissement>/",
+        DetailEtablissementTenantView.as_view(),
+        name="detail-etablissement",
+    ),
     path(
         "etablissements/<str:id_etablissement>/permissions/",
         PermissionsRolesTenantView.as_view(),
