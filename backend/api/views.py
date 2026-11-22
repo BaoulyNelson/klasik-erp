@@ -1,17 +1,29 @@
 import hashlib
+import hmac
+import logging
 import secrets
+from smtplib import SMTPException
 from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.mail import send_mail
 from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed, NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import (
+    AuthenticationFailed,
+    NotFound,
+    PermissionDenied,
+    ValidationError,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -19,6 +31,8 @@ from api.serializers import ProfilUtilisateurSerializer
 from comptes.models import AffiliationEtablissement, JetonReinitialisation, Utilisateur
 from etablissements.models import ConfigurationMarquePlateforme
 from api.validators import valider_url_image
+
+logger = logging.getLogger(__name__)
 
 
 class SanteView(APIView):
@@ -109,6 +123,8 @@ class ConfigurationPlateformeView(APIView):
 class ConnexionDemoView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth_demo"
 
     @extend_schema(
         operation_id="obtenirSessionDemonstration",
@@ -148,6 +164,8 @@ class ConnexionDemoView(APIView):
 class ObtenirJetonsVerrouilleView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth_login"
 
     def post(self, request):
         identifiant = str(
@@ -214,35 +232,66 @@ class ObtenirJetonsVerrouilleView(APIView):
 class DemanderReinitialisationView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_reset"
 
     def post(self, request):
         courriel = str(request.data.get("courriel", "")).strip().lower()
-        utilisateur = Utilisateur.objects.filter(courriel__iexact=courriel).first()
+        utilisateur = Utilisateur.objects.filter(
+            courriel__iexact=courriel,
+            is_active=True,
+        ).first()
         token_plaintext = None
         if utilisateur:
             JetonReinitialisation.objects.filter(
                 utilisateur=utilisateur,
                 utilise_le__isnull=True,
             ).update(utilise_le=timezone.now())
-            token_plaintext = secrets.token_urlsafe(32)
+            token_plaintext = f"{secrets.randbelow(1_000_000):06d}"
             empreinte = hashlib.sha256(token_plaintext.encode("utf-8")).hexdigest()
             JetonReinitialisation.objects.create(
                 utilisateur=utilisateur,
                 empreinte=empreinte,
-                expire_le=timezone.now() + timedelta(minutes=30),
+                expire_le=timezone.now() + timedelta(minutes=15),
             )
         reponse = {
             "message":
-            "Si ce courriel existe, un lien de réinitialisation a été généré.",
+            "Si cette adresse est associée à un compte, la demande a été traitée.",
         }
-        if settings.DEBUG and token_plaintext:
-            reponse["jeton_demo"] = token_plaintext
+        if utilisateur and token_plaintext:
+            try:
+                courriels_envoyes = send_mail(
+                    subject="Réinitialisation de votre mot de passe Klasik ERP",
+                    message=(
+                        f"Bonjour {utilisateur.nom_complet},\n\n"
+                        "Voici votre code de réinitialisation :\n"
+                        f"{token_plaintext}\n\n"
+                        "Ce code expire dans 15 minutes et ne peut être utilisé qu’une seule fois. "
+                        "Si vous n’êtes pas à l’origine de cette demande, ignorez ce message."
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[utilisateur.courriel],
+                    fail_silently=False,
+                )
+            except (OSError, SMTPException):
+                courriels_envoyes = 0
+            if courriels_envoyes != 1:
+                logger.error("Le courriel de réinitialisation n’a pas été remis.")
+                JetonReinitialisation.objects.filter(
+                    utilisateur=utilisateur,
+                    empreinte=hashlib.sha256(token_plaintext.encode("utf-8")).hexdigest(),
+                    utilise_le__isnull=True,
+                ).update(utilise_le=timezone.now())
+            elif settings.DEBUG:
+                reponse["jeton_demo"] = token_plaintext
         return Response(reponse)
 
 
 class ConfirmerReinitialisationView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_reset_confirm"
 
     def post(self, request):
         jeton = str(request.data.get("jeton", ""))
@@ -252,13 +301,30 @@ class ConfirmerReinitialisationView(APIView):
                 {"nouveau_mot_de_passe": "Le mot de passe doit contenir au moins 8 caractères."}
             )
         empreinte = hashlib.sha256(jeton.encode("utf-8")).hexdigest()
-        token = JetonReinitialisation.objects.select_related("utilisateur").filter(
-            empreinte=empreinte,
+        courriel = str(request.data.get("courriel", "")).strip()
+        utilisateur = Utilisateur.objects.filter(
+            courriel__iexact=courriel,
+            is_active=True,
+        ).first()
+        token = JetonReinitialisation.objects.filter(
+            utilisateur=utilisateur,
             utilise_le__isnull=True,
             expire_le__gt=timezone.now(),
-        ).first()
+        ).order_by("-cree_le").first()
         if token is None:
             raise NotFound("Le jeton de réinitialisation est invalide ou expiré.")
+        if not hmac.compare_digest(token.empreinte, empreinte):
+            token.tentatives_echouees += 1
+            if token.tentatives_echouees >= 5:
+                token.utilise_le = timezone.now()
+            token.save(update_fields=("tentatives_echouees", "utilise_le"))
+            raise NotFound("Le jeton de réinitialisation est invalide ou expiré.")
+        try:
+            validate_password(mot_de_passe, user=token.utilisateur)
+        except DjangoValidationError as erreur:
+            raise ValidationError(
+                {"nouveau_mot_de_passe": list(erreur.messages)}
+            ) from erreur
         token.utilisateur.set_password(mot_de_passe)
         token.utilisateur.save(update_fields=("password",))
         token.utilise_le = timezone.now()
@@ -283,6 +349,12 @@ class ChangerMotDePasseView(APIView):
             raise ValidationError(
                 {"nouveau_mot_de_passe": "Le mot de passe doit contenir au moins 8 caractères."}
             )
+        try:
+            validate_password(nouveau, user=request.user)
+        except DjangoValidationError as erreur:
+            raise ValidationError(
+                {"nouveau_mot_de_passe": list(erreur.messages)}
+            ) from erreur
         request.user.set_password(nouveau)
         request.user.save(update_fields=("password",))
         return Response({"message": "Votre mot de passe a été changé."})
@@ -291,6 +363,8 @@ class ChangerMotDePasseView(APIView):
 class ConnexionGoogleView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth_google"
 
     def post(self, request):
         token_identite = str(request.data.get("id_token", ""))

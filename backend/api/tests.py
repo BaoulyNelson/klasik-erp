@@ -2,12 +2,18 @@ import json
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core import mail
 from django.test import TestCase, override_settings
 from io import StringIO
 from unittest.mock import patch
 from rest_framework.test import APIClient
-from comptes.models import AffiliationEtablissement, SurchargePermissions
+from comptes.models import (
+    AffiliationEtablissement,
+    JetonReinitialisation,
+    SurchargePermissions,
+)
 from donnees.models import EnregistrementMetier, EntreeAuditApi, FichierTeleverse
 from etablissements.models import Etablissement
 from scolarite.models import (
@@ -41,6 +47,7 @@ Utilisateur = get_user_model()
 
 class TestsAuthentificationApi(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.utilisateur = Utilisateur.objects.create_user(
             courriel="test@example.org",
@@ -49,7 +56,10 @@ class TestsAuthentificationApi(TestCase):
             role="ENSEIGNANT",
         )
 
-    @override_settings(DEBUG=True)
+    @override_settings(
+        DEBUG=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    )
     def test_reinitialisation_unique_et_change_mot_de_passe(self):
         demande = self.client.post(
             "/api/auth/password/reset/",
@@ -63,6 +73,7 @@ class TestsAuthentificationApi(TestCase):
         confirmation = self.client.post(
             "/api/auth/password/reset/confirm/",
             {
+                "courriel": "test@example.org",
                 "jeton": token,
                 "nouveau_mot_de_passe": "NouveauMotDePasse-2026",
             },
@@ -75,12 +86,93 @@ class TestsAuthentificationApi(TestCase):
         reuse = self.client.post(
             "/api/auth/password/reset/confirm/",
             {
+                "courriel": "test@example.org",
                 "jeton": token,
                 "nouveau_mot_de_passe": "EncoreAutre-2026",
             },
             format="json",
         )
         self.assertEqual(reuse.status_code, 404)
+
+    @override_settings(
+        DEBUG=False,
+        SECURE_SSL_REDIRECT=False,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    )
+    def test_reinitialisation_envoie_un_code_sans_le_retourner_en_production(self):
+        mail.outbox.clear()
+        demande = self.client.post(
+            "/api/auth/password/reset/",
+            {"courriel": "test@example.org"},
+            format="json",
+        )
+
+        self.assertEqual(demande.status_code, 200)
+        self.assertNotIn("jeton_demo", demande.json())
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("code de réinitialisation", mail.outbox[0].body)
+        self.assertRegex(mail.outbox[0].body, r"\b\d{6}\b")
+
+    @override_settings(
+        DEBUG=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    )
+    def test_reinitialisation_refuse_un_mot_de_passe_trop_faible(self):
+        demande = self.client.post(
+            "/api/auth/password/reset/",
+            {"courriel": "test@example.org"},
+            format="json",
+        )
+        confirmation = self.client.post(
+            "/api/auth/password/reset/confirm/",
+            {
+                "courriel": "test@example.org",
+                "jeton": demande.json()["jeton_demo"],
+                "nouveau_mot_de_passe": "password123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(confirmation.status_code, 400)
+        self.utilisateur.refresh_from_db()
+        self.assertTrue(self.utilisateur.check_password("MotDePasseDeTest-2026"))
+
+    @override_settings(
+        DEBUG=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    )
+    def test_reinitialisation_verrouille_un_code_apres_cinq_essais_incorrects(self):
+        demande = self.client.post(
+            "/api/auth/password/reset/",
+            {"courriel": "test@example.org"},
+            format="json",
+        )
+        jeton = demande.json()["jeton_demo"]
+
+        for _ in range(5):
+            tentative = self.client.post(
+                "/api/auth/password/reset/confirm/",
+                {
+                    "courriel": "test@example.org",
+                    "jeton": "000000" if jeton != "000000" else "000001",
+                    "nouveau_mot_de_passe": "NouveauMotDePasse-2026",
+                },
+                format="json",
+            )
+            self.assertEqual(tentative.status_code, 404)
+
+        code = JetonReinitialisation.objects.get(utilisateur=self.utilisateur)
+        self.assertEqual(code.tentatives_echouees, 5)
+        self.assertIsNotNone(code.utilise_le)
+
+    def test_connexion_est_limitee_en_debit(self):
+        charge = {"courriel": "test@example.org", "password": "incorrect"}
+        for _ in range(10):
+            self.client.post("/api/auth/token/", charge, format="json")
+        dernier = self.client.post("/api/auth/token/", charge, format="json")
+
+        self.assertEqual(dernier.status_code, 429)
+        self.assertIn("Trop de requêtes", dernier.json()["message"])
 
     def test_verrouillage_apres_tentatives_et_change_mot_de_passe(self):
         for _ in range(5):

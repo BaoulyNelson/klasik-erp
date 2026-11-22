@@ -1,5 +1,10 @@
 from django.utils.translation import override
-from rest_framework.exceptions import AuthenticationFailed, NotAuthenticated, PermissionDenied
+from rest_framework.exceptions import (
+    AuthenticationFailed,
+    NotAuthenticated,
+    PermissionDenied,
+    Throttled,
+)
 from rest_framework.views import exception_handler
 
 
@@ -14,6 +19,9 @@ def gestionnaire_erreurs(exception, context):
         details = None
     elif isinstance(exception, PermissionDenied):
         message = "Vous n’avez pas la permission d’effectuer cette action."
+        details = None
+    elif isinstance(exception, Throttled):
+        message = "Trop de requêtes. Veuillez réessayer plus tard."
         details = None
     elif reponse.status_code == 404:
         message = "La ressource demandée est introuvable."

@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -25,6 +26,7 @@ SECRET_KEY = os.getenv(
     "cle-de-developpement-insecure-a-remplacer-obligatoirement",
 )
 DEBUG = lire_booleen("DJANGO_DEBUG", False)
+EN_EXECUTION_TEST = "test" in sys.argv
 DEMO_LOGIN_ENABLED = DEBUG and lire_booleen("DJANGO_DEMO_LOGIN_ENABLED", False)
 if not DEBUG and (
     "DJANGO_SECRET_KEY" not in os.environ
@@ -42,6 +44,8 @@ if not DEBUG and "DJANGO_CORS_ALLOWED_ORIGINS" not in os.environ:
 ALLOWED_HOSTS = lire_liste("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver")
 if not DEBUG and not ALLOWED_HOSTS:
     raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS ne peut pas être vide hors du mode développement.")
+if not DEBUG and not EN_EXECUTION_TEST and "*" in ALLOWED_HOSTS:
+    raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS ne peut pas contenir un joker en production.")
 origines_cors = lire_liste(
     "DJANGO_CORS_ALLOWED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000",
@@ -50,10 +54,18 @@ if not DEBUG and not origines_cors:
     raise ImproperlyConfigured(
         "DJANGO_CORS_ALLOWED_ORIGINS ne peut pas être vide hors du mode développement."
     )
+if not DEBUG and "DJANGO_CSRF_TRUSTED_ORIGINS" not in os.environ:
+    raise ImproperlyConfigured(
+        "DJANGO_CSRF_TRUSTED_ORIGINS doit être configuré hors du mode développement."
+    )
 CSRF_TRUSTED_ORIGINS = lire_liste(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000",
 )
+if not DEBUG and not EN_EXECUTION_TEST and not CSRF_TRUSTED_ORIGINS:
+    raise ImproperlyConfigured(
+        "DJANGO_CSRF_TRUSTED_ORIGINS ne peut pas être vide hors du mode développement."
+    )
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -114,6 +126,8 @@ ASGI_APPLICATION = "config.asgi.application"
 db_engine = os.getenv("DB_ENGINE", "sqlite").strip().lower()
 if db_engine not in {"sqlite", "postgres", "postgresql"}:
     raise ImproperlyConfigured("DB_ENGINE doit valoir sqlite ou postgresql.")
+if not DEBUG and not EN_EXECUTION_TEST and db_engine not in {"postgres", "postgresql"}:
+    raise ImproperlyConfigured("PostgreSQL est obligatoire hors du mode développement.")
 
 if db_engine in {"postgres", "postgresql"}:
     configuration_postgres = {
@@ -187,6 +201,14 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 50,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "api.exceptions.gestionnaire_erreurs",
+    "NUM_PROXIES": int(os.getenv("DJANGO_NUM_PROXIES", "2" if not DEBUG else "0")),
+    "DEFAULT_THROTTLE_RATES": {
+        "auth_login": "10/minute",
+        "auth_demo": "10/minute",
+        "auth_google": "10/minute",
+        "password_reset": "3/hour",
+        "password_reset_confirm": "5/hour",
+    },
 }
 
 SIMPLE_JWT = {
@@ -211,7 +233,82 @@ CSRF_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = lire_booleen("DJANGO_SECURE_SSL_REDIRECT", not DEBUG)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 SECURE_HSTS_SECONDS = int(
     os.getenv("DJANGO_SECURE_HSTS_SECONDS", "31536000" if not DEBUG else "0")
 )
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+if not DEBUG and not EN_EXECUTION_TEST:
+    if not SECURE_SSL_REDIRECT:
+        raise ImproperlyConfigured(
+            "DJANGO_SECURE_SSL_REDIRECT doit rester activé en production."
+        )
+    if SECURE_HSTS_SECONDS < 31536000:
+        raise ImproperlyConfigured(
+            "DJANGO_SECURE_HSTS_SECONDS doit être d’au moins un an en production."
+        )
+    if any(not origine.startswith("https://") for origine in origines_cors):
+        raise ImproperlyConfigured(
+            "Les origines CORS de production doivent utiliser HTTPS."
+        )
+    if any(not origine.startswith("https://") for origine in CSRF_TRUSTED_ORIGINS):
+        raise ImproperlyConfigured(
+            "Les origines CSRF de production doivent utiliser HTTPS."
+        )
+
+EMAIL_BACKEND = os.getenv(
+    "DJANGO_EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend"
+    if DEBUG or EN_EXECUTION_TEST
+    else "django.core.mail.backends.smtp.EmailBackend",
+)
+EMAIL_HOST = os.getenv("DJANGO_EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("DJANGO_EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("DJANGO_EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("DJANGO_EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = lire_booleen("DJANGO_EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = lire_booleen("DJANGO_EMAIL_USE_SSL", False)
+EMAIL_TIMEOUT = int(os.getenv("DJANGO_EMAIL_TIMEOUT", "10"))
+DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "noreply@localhost")
+if (
+    not DEBUG
+    and not EN_EXECUTION_TEST
+):
+    if EMAIL_BACKEND != "django.core.mail.backends.smtp.EmailBackend":
+        raise ImproperlyConfigured(
+            "Un relais SMTP doit être configuré pour l’envoi de courriels en production."
+        )
+    if not EMAIL_HOST or DEFAULT_FROM_EMAIL.endswith("@localhost"):
+        raise ImproperlyConfigured(
+            "DJANGO_EMAIL_HOST et DJANGO_DEFAULT_FROM_EMAIL doivent être configurés en production."
+        )
+    if EMAIL_USE_TLS and EMAIL_USE_SSL:
+        raise ImproperlyConfigured(
+            "DJANGO_EMAIL_USE_TLS et DJANGO_EMAIL_USE_SSL ne peuvent pas être activés simultanément."
+        )
+    if bool(EMAIL_HOST_USER) != bool(EMAIL_HOST_PASSWORD):
+        raise ImproperlyConfigured(
+            "DJANGO_EMAIL_HOST_USER et DJANGO_EMAIL_HOST_PASSWORD doivent être définis ensemble."
+        )
+
+cache_backend = os.getenv(
+    "DJANGO_CACHE_BACKEND",
+    "locmem" if DEBUG or EN_EXECUTION_TEST else "database",
+).strip().lower()
+if cache_backend not in {"locmem", "database"}:
+    raise ImproperlyConfigured("DJANGO_CACHE_BACKEND doit valoir locmem ou database.")
+if not DEBUG and not EN_EXECUTION_TEST and cache_backend != "database":
+    raise ImproperlyConfigured(
+        "Le cache partagé en base de données est obligatoire hors du mode développement."
+    )
+CACHES = {
+    "default": (
+        {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": os.getenv("DJANGO_CACHE_TABLE", "django_cache"),
+        }
+        if cache_backend == "database"
+        else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
+    )
+}

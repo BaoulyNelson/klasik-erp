@@ -145,6 +145,7 @@ class JetonReinitialisation(models.Model):
     empreinte = models.CharField(max_length=64, unique=True)
     expire_le = models.DateTimeField()
     utilise_le = models.DateTimeField(null=True, blank=True)
+    tentatives_echouees = models.PositiveSmallIntegerField(default=0)
     cree_le = models.DateTimeField(auto_now_add=True)
 
     class Meta:

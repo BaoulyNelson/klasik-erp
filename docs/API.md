@@ -7,14 +7,14 @@ La documentation OpenAPI interactive est publiée en développement sur `/api/do
 | Méthode | URL | Authentification | Description |
 |---|---|---|---|
 | `GET` | `/api/sante/` | Publique | État du service et message français. |
-| `POST` | `/api/auth/token/` | Publique | Connexion par `courriel` et `password`; renvoie `access` et `refresh`. |
+| `POST` | `/api/auth/token/` | Publique, limitée à 10 demandes/minute par IP | Connexion par `courriel` et `password`; renvoie `access` et `refresh`. |
 | `POST` | `/api/auth/token/refresh/` | Jeton de renouvellement | Renouvelle le jeton d’accès; les refresh tokens sont rotatifs et révoqués après rotation. |
 | `POST` | `/api/auth/token/blacklist/` | JWT d’accès | Révoque un jeton de renouvellement. |
-| `POST` | `/api/auth/password/reset/` | Publique | Génère un jeton à usage unique expirant dans 30 minutes; le jeton est uniquement exposé dans la réponse en développement. |
-| `POST` | `/api/auth/password/reset/confirm/` | Publique | Consomme le jeton de réinitialisation et remplace le mot de passe. |
+| `POST` | `/api/auth/password/reset/` | Publique, limitée à 3 demandes/heure par IP | Reçoit `courriel`, crée un code aléatoire à 6 chiffres valable 15 minutes et l’envoie par courriel sans révéler si le compte existe. Le code est exposé dans la réponse uniquement en développement. |
+| `POST` | `/api/auth/password/reset/confirm/` | Publique, limitée à 5 demandes/heure par IP | Reçoit `courriel`, `jeton` et `nouveau_mot_de_passe`; consomme le code à usage unique. Cinq codes erronés invalident le code actif. |
 | `POST` | `/api/auth/password/change/` | JWT d’accès | Change le mot de passe après validation du mot de passe actuel. |
-| `POST` | `/api/auth/google/` | Publique | Vérifie un jeton Google vérifié par courriel et renvoie des JWT uniquement si un compte local existe déjà. |
-| `POST` | `/api/auth/demo/` | Publique, développement avec opt-in | Délivre un JWT uniquement si `DEBUG=true`, `DJANGO_DEMO_LOGIN_ENABLED=true` et si le compte fait partie des comptes de démonstration seedés; répond 404 sinon. |
+| `POST` | `/api/auth/google/` | Publique, limitée à 10 demandes/minute par IP | Vérifie un jeton Google vérifié par courriel et renvoie des JWT uniquement si un compte local existe déjà. |
+| `POST` | `/api/auth/demo/` | Publique, développement avec opt-in, limitée à 10 demandes/minute par IP | Délivre un JWT uniquement si `DEBUG=true`, `DJANGO_DEMO_LOGIN_ENABLED=true` et si le compte fait partie des comptes de démonstration seedés; répond 404 sinon. |
 | `GET` | `/api/auth/me/` | JWT d’accès | Profil courant, affiliations relationnelles et photo de profil enregistrée. |
 | `PATCH` | `/api/auth/profile/` | JWT d’accès | Enregistre ou retire la photo de profil (`url_avatar`); image encodée limitée à 512 Ko. |
 | `GET` | `/api/plateforme/configuration/` | JWT d’accès | Renvoie le logo global persistant de la plateforme. |
