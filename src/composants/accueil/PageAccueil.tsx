@@ -32,11 +32,6 @@ import {
   LangueSupportee,
   OPTIONS_LANGUES,
 } from '../../configuration/internationalisation';
-import {
-  PROFILS_PAYS,
-  TOUTES_LES_DEVISES,
-  TOUS_LES_PAYS,
-} from '../../configuration/regions_devises';
 import { utiliserErp } from '../../contexte/ContexteErp';
 import { TypeEtablissement } from '../../modeles/erp';
 import { envoyerMessageContactApi } from '../../services/clientApi';
@@ -886,11 +881,9 @@ export const PageAccueil: React.FC = () => {
               {textes.section_tarifs_titre}
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {textes.section_tarifs_sous_titre} Régions préconfigurées :{' '}
-              {TOUS_LES_PAYS.filter((c) => c !== 'INTL')
-                .map((c) => PROFILS_PAYS[c].nom)
-                .join(', ')}{' '}
-              + Autre pays (Monde).
+              {textes.section_tarifs_sous_titre} Couverture mondiale : tous les pays
+              (ISO 3166-1), indicatifs téléphoniques vérifiés, fuseaux IANA,
+              langues FR/EN/ES/HT et devises ISO 4217.
             </p>
           </div>
 
