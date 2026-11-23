@@ -351,6 +351,18 @@ class ListeEtablissementsView(APIView):
         courriel_fondateur = fondateur.get("courriel")
         telephone_fondateur = fondateur.get("telephone", "")
         mot_de_passe = fondateur.get("mot_de_passe", "")
+        utiliser_compte_connecte = fondateur.get("utiliser_compte_connecte", False)
+        if not isinstance(utiliser_compte_connecte, bool):
+            raise ValidationError(
+                {"utiliser_compte_connecte": "Ce choix doit être vrai ou faux."}
+            )
+        est_administrateur_plateforme = request.user.is_authenticated and bool(
+            request.user.est_super_admin_plateforme or request.user.is_superuser
+        )
+        if utiliser_compte_connecte and not est_administrateur_plateforme:
+            raise ValidationError(
+                {"utiliser_compte_connecte": "Ce choix est réservé aux administrateurs de la plateforme."}
+            )
         if not isinstance(nom_fondateur, str) or len(nom_fondateur.strip()) < 2 or len(nom_fondateur.strip()) > 120:
             raise ValidationError({"nom_complet": "Le nom complet du responsable est invalide."})
         if not isinstance(courriel_fondateur, str) or len(courriel_fondateur.strip()) > 191:
@@ -362,7 +374,15 @@ class ListeEtablissementsView(APIView):
             raise ValidationError({"courriel": "L’adresse courriel du responsable est invalide."}) from erreur
         if not isinstance(telephone_fondateur, str) or len(telephone_fondateur) > 64:
             raise ValidationError({"telephone": "Le numéro de téléphone du responsable est invalide."})
-        if telephone_fondateur:
+        if utiliser_compte_connecte:
+            if courriel_fondateur.casefold() != request.user.courriel.casefold():
+                raise ValidationError(
+                    {"courriel": "Le compte connecté doit être le compte administrateur choisi."}
+                )
+            nom_fondateur = request.user.nom_complet
+            courriel_fondateur = request.user.courriel.casefold()
+            telephone_fondateur = request.user.telephone
+        elif telephone_fondateur:
             try:
                 valider_telephone_pays(code_pays, telephone_fondateur, "telephone_fondateur")
             except DjangoValidationError as erreur:
@@ -370,12 +390,10 @@ class ListeEtablissementsView(APIView):
                     erreur.message_dict if hasattr(erreur, "message_dict") else erreur.messages
                 ) from erreur
 
-        est_administrateur_plateforme = request.user.is_authenticated and bool(
-            request.user.est_super_admin_plateforme or request.user.is_superuser
-        )
         utilisateur_existant = (
             request.user
-            if request.user.is_authenticated and not est_administrateur_plateforme
+            if utiliser_compte_connecte
+            or (request.user.is_authenticated and not est_administrateur_plateforme)
             else None
         )
         if utilisateur_existant:

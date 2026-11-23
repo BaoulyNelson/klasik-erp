@@ -1429,6 +1429,67 @@ class TestsCreationEtablissementApi(TestCase):
         )
         self.assertEqual(reponse.cookies, {})
 
+    def test_creation_par_un_admin_plateforme_peut_reutiliser_son_compte_sur_choix_explicite(self):
+        administrateur = Utilisateur.objects.create_superuser(
+            "plateforme-proprietaire@example.org",
+            "MotDePassePlateforme-2026",
+        )
+        self.client.force_authenticate(administrateur)
+        payload = {
+            **self.payload,
+            "fondateur": {
+                **self.payload["fondateur"],
+                "nom_complet": administrateur.nom_complet,
+                "courriel": administrateur.courriel,
+                "telephone": "",
+                "mot_de_passe": "",
+                "utiliser_compte_connecte": True,
+            },
+        }
+
+        reponse = self.client.post("/api/etablissements/", payload, format="json")
+
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        etablissement = Etablissement.objects.get(pk="tenant-cree-api")
+        self.assertEqual(
+            AffiliationEtablissement.objects.get(
+                utilisateur=administrateur,
+                etablissement=etablissement,
+            ).role,
+            "DIRECTEUR",
+        )
+        self.assertEqual(etablissement.proprietaire_id, str(administrateur.id))
+        self.assertEqual(Utilisateur.objects.filter(pk=administrateur.pk).count(), 1)
+        self.assertTrue(reponse.json()["profil"]["est_super_admin_plateforme"])
+        self.assertEqual(
+            self.client.get("/api/etablissements/").json()[0]["id"],
+            etablissement.id,
+        )
+
+    def test_utiliser_compte_connecte_est_reserve_a_l_administration_plateforme(self):
+        utilisateur = Utilisateur.objects.create_user(
+            courriel="directeur-choix@example.org",
+            password="MotDePasseDirecteur-2026",
+            nom_complet="Directeur de test",
+            role="DIRECTEUR",
+        )
+        self.client.force_authenticate(utilisateur)
+        payload = {
+            **self.payload,
+            "fondateur": {
+                **self.payload["fondateur"],
+                "nom_complet": utilisateur.nom_complet,
+                "courriel": utilisateur.courriel,
+                "mot_de_passe": "",
+                "utiliser_compte_connecte": True,
+            },
+        }
+
+        reponse = self.client.post("/api/etablissements/", payload, format="json")
+
+        self.assertEqual(reponse.status_code, 400)
+        self.assertFalse(Etablissement.objects.filter(pk="tenant-cree-api").exists())
+
     def test_creation_refuse_telephone_invalide_ou_fuseau_non_iana(self):
         telephone_invalide = json.loads(json.dumps(self.payload))
         telephone_invalide["etablissement"]["telephone"] = "+3310203040"

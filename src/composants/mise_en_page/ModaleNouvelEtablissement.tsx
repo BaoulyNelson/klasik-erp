@@ -87,6 +87,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
   const [frais_inscription_pivot_htg, definir_frais_inscription_pivot_htg] = useState(42900);
   const [courriel_admin, definir_courriel_admin] = useState('');
   const [mot_de_passe_admin, definir_mot_de_passe_admin] = useState('');
+  const [utiliser_compte_superadmin, definir_utiliser_compte_superadmin] = useState(false);
   const [offre_saas, definir_offre_saas] =
     useState<ConfigurationEtablissement['offre_saas']>(offre_saas_creation_selectionnee);
   const [mode_activation_saas, definir_mode_activation_saas] = useState<'ESSAI_14J' | 'PAYE'>(
@@ -111,16 +112,20 @@ export const ModaleNouvelEtablissement: React.FC = () => {
     const cle_utilisateur = est_authentifie ? utilisateur_actif.id : '__ANONYME__';
     const changement_compte = ref_utilisateur_prerempli.current !== cle_utilisateur;
 
-    if (
-      est_authentifie &&
-      !utilisateur_actif.est_super_admin_plateforme &&
-      utilisateur_actif.nom_complet.trim()
-    ) {
+    if (est_authentifie) {
       definir_nom_direction((precedent) =>
-        changement_compte || !precedent.trim() ? utilisateur_actif.nom_complet : precedent
+        changement_compte
+          ? utilisateur_actif.nom_complet.trim()
+          : utilisateur_actif.nom_complet.trim() && !precedent.trim()
+            ? utilisateur_actif.nom_complet
+            : precedent
       );
       definir_courriel_admin((precedent) =>
-        changement_compte || !precedent.trim() ? utilisateur_actif.courriel : precedent
+        changement_compte
+          ? utilisateur_actif.courriel.trim()
+          : utilisateur_actif.courriel.trim() && !precedent.trim()
+            ? utilisateur_actif.courriel
+            : precedent
       );
       definir_mot_de_passe_admin((precedent) => (changement_compte ? '' : precedent));
     } else if (changement_compte) {
@@ -175,7 +180,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
   const courriel_admin_propre = courriel_admin.trim().toLowerCase();
   const rattache_utilisateur_courant =
     est_authentifie &&
-    !utilisateur_actif.est_super_admin_plateforme &&
+    (!utilisateur_actif.est_super_admin_plateforme || utiliser_compte_superadmin) &&
     courriel_admin_propre === utilisateur_actif.courriel.toLowerCase();
   const courriel_admin_valide = valider_courriel(courriel_admin);
   const courriel_en_conflit =
@@ -225,6 +230,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
   const gerer_fermeture = () => {
     definir_modale_nouvel_etablissement_ouverte(false);
     definir_etape(1);
+    definir_utiliser_compte_superadmin(false);
   };
 
   const gerer_fichier_logo = async (evenement: React.ChangeEvent<HTMLInputElement>) => {
@@ -410,6 +416,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
           courriel: courriel_admin.trim(),
           telephone: validation_telephone.numero_normalise,
           mot_de_passe: mot_de_passe_admin.trim(),
+          utiliser_compte_connecte: utiliser_compte_superadmin,
         }
       );
       if (!ok) return;
@@ -420,6 +427,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
       definir_nom_direction('');
       definir_courriel_admin('');
       definir_mot_de_passe_admin('');
+      definir_utiliser_compte_superadmin(false);
       definir_url_logo(undefined);
     } finally {
       definir_creation_en_cours(false);
@@ -1088,7 +1096,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
           {est_authentifie && (
             <div className="p-2.5 rounded-lg border border-indigo-200 bg-indigo-50/70 dark:border-indigo-900/60 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200 text-[11px]">
               {utilisateur_actif.est_super_admin_plateforme ? (
-                'Renseignez le responsable de l’établissement client et créez son compte administrateur.'
+                'Choisissez si votre compte plateforme ou un compte administrateur distinct dirigera ce nouvel établissement.'
               ) : (
                 <>
                   Pré-rempli avec votre profil connecté (
@@ -1098,6 +1106,50 @@ export const ModaleNouvelEtablissement: React.FC = () => {
               )}
             </div>
           )}
+          {utilisateur_actif.est_super_admin_plateforme && (
+            <fieldset className="grid gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+              <legend className="px-1 font-semibold">Compte directeur de l’établissement</legend>
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="radio"
+                  name="mode-compte-fondateur"
+                  checked={!utiliser_compte_superadmin}
+                  onChange={() => {
+                    definir_utiliser_compte_superadmin(false);
+                    definir_mot_de_passe_admin('');
+                  }}
+                  className="mt-0.5"
+                />
+                <span>
+                  <strong>Créer un compte responsable distinct (pour un client)</strong>
+                  <span className="block text-slate-600 dark:text-slate-400">
+                    Utilisez un autre courriel et un mot de passe d’au moins 8 caractères.
+                  </span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="radio"
+                  name="mode-compte-fondateur"
+                  checked={utiliser_compte_superadmin}
+                  onChange={() => {
+                    definir_utiliser_compte_superadmin(true);
+                    definir_nom_direction(utilisateur_actif.nom_complet);
+                    definir_courriel_admin(utilisateur_actif.courriel);
+                    definir_mot_de_passe_admin('');
+                  }}
+                  className="mt-0.5"
+                />
+                <span>
+                  <strong>Rattacher cet établissement à mon compte actuel</strong>
+                  <span className="block text-slate-600 dark:text-slate-400">
+                    Votre compte conservera son accès plateforme et sera aussi Directeur de cette
+                    école.
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold mb-1">Nom du responsable / fondateur *</label>
@@ -1106,6 +1158,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
                 required
                 minLength={2}
                 value={nom_direction}
+                readOnly={rattache_utilisateur_courant}
                 onChange={(evenement) => definir_nom_direction(evenement.target.value)}
                 placeholder="ex. Dr. Sophie Moreau"
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
@@ -1122,6 +1175,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
                 type="email"
                 required
                 value={courriel_admin}
+                readOnly={rattache_utilisateur_courant}
                 onChange={(evenement) => definir_courriel_admin(evenement.target.value)}
                 placeholder="ex. direction@votre-ecole.org"
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
@@ -1133,7 +1187,10 @@ export const ModaleNouvelEtablissement: React.FC = () => {
               )}
               {courriel_en_conflit && (
                 <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">
-                  Ce courriel appartient déjà à un autre utilisateur.
+                  {utilisateur_actif.est_super_admin_plateforme &&
+                  courriel_admin_propre === utilisateur_actif.courriel.toLowerCase()
+                    ? 'Ce courriel est déjà utilisé par votre compte plateforme. Saisissez un autre courriel pour le compte de l’établissement.'
+                    : 'Ce courriel appartient déjà à un autre utilisateur.'}
                 </p>
               )}
             </div>
@@ -1143,8 +1200,9 @@ export const ModaleNouvelEtablissement: React.FC = () => {
               </label>
               {rattache_utilisateur_courant ? (
                 <div className="px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/60 dark:bg-emerald-950/30 text-[11px] text-emerald-800 dark:text-emerald-300">
-                  Rattaché à votre session active ({utilisateur_actif.courriel}). Vos identifiants
-                  actuels restent inchangés.
+                  {utilisateur_actif.est_super_admin_plateforme
+                    ? `Votre compte Superuser (${utilisateur_actif.courriel}) reste actif et sera aussi Directeur de cette école.`
+                    : `Rattaché à votre session active (${utilisateur_actif.courriel}). Vos identifiants actuels restent inchangés.`}
                 </div>
               ) : (
                 <>

@@ -179,6 +179,7 @@ export interface SaisieFondateurEtablissement {
   courriel: string;
   telephone: string;
   mot_de_passe: string;
+  utiliser_compte_connecte?: boolean;
 }
 
 interface SessionPersistee {
@@ -2175,16 +2176,18 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         utilisateur_actif.id.startsWith('usr-google-') &&
         courriel_normalise === utilisateur_actif.courriel.toLowerCase();
 
+      const reutiliser_compte_connecte =
+        est_authentifie &&
+        courriel_normalise === utilisateur_actif.courriel.toLowerCase() &&
+        (!utilisateur_actif.est_super_admin_plateforme ||
+          compte_fondateur?.utiliser_compte_connecte === true);
       const est_fondateur_personnalise = SOURCE_API
-        ? est_authentifie &&
-          !utilisateur_actif.est_super_admin_plateforme &&
-          courriel_normalise === utilisateur_actif.courriel.toLowerCase()
+        ? reutiliser_compte_connecte
         : est_fondateur_google ||
           (est_authentifie &&
             mode_affichage === 'espace_travail' &&
             !ecran_connexion_ouvert &&
-            !utilisateur_actif.est_super_admin_plateforme &&
-            courriel_normalise === utilisateur_actif.courriel.toLowerCase());
+            reutiliser_compte_connecte);
 
       if (
         !est_fondateur_personnalise &&
@@ -2228,6 +2231,8 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
                 telephone:
                   compte_fondateur?.telephone.trim() || etablissement_normalise.telephone,
                 mot_de_passe: mot_de_passe_saisi,
+                utiliser_compte_connecte:
+                  compte_fondateur?.utiliser_compte_connecte === true,
               },
             },
           });
