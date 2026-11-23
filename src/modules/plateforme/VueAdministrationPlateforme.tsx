@@ -815,6 +815,10 @@ export const VueAdministrationPlateforme: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <p className="sm:col-span-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  Les coordonnées laissées vides ne sont pas affichées sur le site public.
+                  Renseignez uniquement des informations réelles et vérifiées.
+                </p>
                 <div className="sm:col-span-2">
                   <label className="block font-semibold mb-1">Raison sociale / Éditeur</label>
                   <input

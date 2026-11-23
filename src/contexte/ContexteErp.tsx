@@ -236,14 +236,14 @@ export const CONFIGURATION_PLATEFORME_DEFAUT: ConfigurationPlateforme = {
   titre_banniere: 'L’ERP éducatif mondial qui s’adapte automatiquement à votre institution.',
   resume_pied_page:
     'Infrastructure SaaS multi-établissements internationale dédiée aux écoles professionnelles, établissements scolaires et universités LMD. Multi-pays, multi-devises, caisse QR et résilience hors-ligne.',
-  horaires_support: 'Lun–Sam · Support multi-fuseaux (Amériques · Europe · Afrique)',
+  horaires_support: '',
   initiales_logo: 'K',
   couleur_marque: 'slate',
-  courriel_support: 'support@klasik-erp.org',
-  telephone_support: '+33 1 86 95 20 10 · +1 (514) 555-0190',
-  site_web: 'https://klasik-erp.org',
-  adresse_siege: 'Paris · Montréal · Dakar · Londres · Port-au-Prince',
-  entite_legale: 'Klasik Technologies Éducatives SAS',
+  courriel_support: '',
+  telephone_support: '',
+  site_web: '',
+  adresse_siege: '',
+  entite_legale: '',
   autoriser_creation_autonome: true,
 };
 

@@ -165,7 +165,7 @@ class ConfigurationMarquePlateforme(models.Model):
     horaires_support = models.CharField(
         max_length=255,
         blank=True,
-        default="Lun–Sam · Support multi-fuseaux (Amériques · Europe · Afrique)",
+        default="",
     )
     url_logo = models.TextField(blank=True, default="")
     initiales_logo = models.CharField(max_length=3, default="K")
@@ -184,23 +184,23 @@ class ConfigurationMarquePlateforme(models.Model):
     courriel_support = models.EmailField(
         max_length=254,
         blank=True,
-        default="support@klasik-erp.org",
+        default="",
     )
     telephone_support = models.CharField(
         max_length=255,
         blank=True,
-        default="+33 1 86 95 20 10 · +1 (514) 555-0190",
+        default="",
     )
-    site_web = models.CharField(max_length=255, blank=True, default="https://klasik-erp.org")
+    site_web = models.CharField(max_length=255, blank=True, default="")
     adresse_siege = models.CharField(
         max_length=255,
         blank=True,
-        default="Paris · Montréal · Dakar · Londres · Port-au-Prince",
+        default="",
     )
     entite_legale = models.CharField(
         max_length=191,
         blank=True,
-        default="Klasik Technologies Éducatives SAS",
+        default="",
     )
     autoriser_creation_autonome = models.BooleanField(default=True)
     modifie_le = models.DateTimeField(auto_now=True)

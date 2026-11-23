@@ -504,6 +504,22 @@ class TestsAuthentificationApi(TestCase):
         self.assertNotIn("cle", reponse.json())
         self.assertNotIn("modifie_le", reponse.json())
 
+    def test_configuration_publique_n_expose_pas_de_coordonnees_fictives(self):
+        client_anonyme = APIClient()
+
+        reponse = client_anonyme.get("/api/plateforme/configuration/")
+
+        self.assertEqual(reponse.status_code, 200)
+        for champ in (
+            "entite_legale",
+            "courriel_support",
+            "telephone_support",
+            "site_web",
+            "adresse_siege",
+            "horaires_support",
+        ):
+            self.assertEqual(reponse.json()[champ], "")
+
     def test_configuration_plateforme_est_persistante_et_reservee_au_superadmin(self):
         url_logo = "data:image/png;base64,iVBORw0KGgo="
         self.client.force_authenticate(self.utilisateur)

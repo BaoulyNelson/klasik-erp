@@ -44,7 +44,8 @@ import { BadgeTypeEtablissement } from '../interface/BadgeTypeEtablissement';
 import { Bouton } from '../interface/Bouton';
 import { LogoPlateforme } from '../interface/LogoPlateforme';
 
-const DEMO_PUBLIQUE_ACTIVE = import.meta.env.VITE_DEMO_PUBLIQUE === 'true';
+const DEMO_PUBLIQUE_ACTIVE =
+  import.meta.env.DEV && import.meta.env.VITE_DEMO_PUBLIQUE === 'true';
 
 const DONNEES_APERCU_MOBILE: Record<
   TypeEtablissement,
@@ -987,15 +988,22 @@ export const PageAccueil: React.FC = () => {
                   'Infrastructure SaaS multi-établissements conçue pour les écoles professionnelles, établissements scolaires et universités LMD.'}
               </p>
 
-              <div className="pt-1 space-y-1.5 text-xs text-slate-400">
-                <div className="font-medium text-slate-200">
-                  {configuration_plateforme.entite_legale}
+              {(configuration_plateforme.entite_legale ||
+                configuration_plateforme.adresse_siege) && (
+                <div className="pt-1 space-y-1.5 text-xs text-slate-400">
+                  {configuration_plateforme.entite_legale && (
+                    <div className="font-medium text-slate-200">
+                      {configuration_plateforme.entite_legale}
+                    </div>
+                  )}
+                  {configuration_plateforme.adresse_siege && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
+                      <span>{configuration_plateforme.adresse_siege}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-start gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
-                  <span>{configuration_plateforme.adresse_siege}</span>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Colonne 2 : Plateforme & Navigation */}
@@ -1066,55 +1074,65 @@ export const PageAccueil: React.FC = () => {
 
             {/* Colonne 4 : Support, Coordonnées & Couverture */}
             <div className="lg:col-span-3 space-y-3.5">
-              <h3 className="text-xs font-display font-semibold text-white tracking-wide">
-                Support &amp; Opérateur
-              </h3>
-              <ul className="space-y-2.5 text-xs text-slate-400">
-                <li>
-                  <a
-                    href={`mailto:${configuration_plateforme.courriel_support}`}
-                    className="inline-flex items-center gap-2 hover:text-white transition-colors break-all"
-                  >
-                    <Mail className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    <span>{configuration_plateforme.courriel_support}</span>
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href={`tel:${configuration_plateforme.telephone_support.split('/')[0].replace(/\s+/g, '')}`}
-                    className="inline-flex items-center gap-2 hover:text-white transition-colors"
-                  >
-                    <Phone className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    <span className="font-mono text-[11px]">
-                      {configuration_plateforme.telephone_support}
-                    </span>
-                  </a>
-                </li>
-                {configuration_plateforme.site_web && (
-                  <li>
-                    <a
-                      href={configuration_plateforme.site_web}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 hover:text-white transition-colors"
-                    >
-                      <Globe className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                      <span className="truncate">{configuration_plateforme.site_web}</span>
-                      <ExternalLink className="w-3 h-3 text-slate-500 shrink-0" />
-                    </a>
-                  </li>
-                )}
-                {configuration_plateforme.horaires_support && (
-                  <li className="inline-flex items-start gap-2 text-[11px] text-slate-400">
-                    <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
-                    <span>{configuration_plateforme.horaires_support}</span>
-                  </li>
-                )}
-              </ul>
-
+              {(configuration_plateforme.courriel_support ||
+              configuration_plateforme.telephone_support ||
+              configuration_plateforme.site_web ||
+              configuration_plateforme.horaires_support) && (
+                <>
+                  <h3 className="text-xs font-display font-semibold text-white tracking-wide">
+                    Support &amp; Opérateur
+                  </h3>
+                  <ul className="space-y-2.5 text-xs text-slate-400">
+                    {configuration_plateforme.courriel_support && (
+                      <li>
+                        <a
+                          href={`mailto:${configuration_plateforme.courriel_support}`}
+                          className="inline-flex items-center gap-2 hover:text-white transition-colors break-all"
+                        >
+                          <Mail className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          <span>{configuration_plateforme.courriel_support}</span>
+                        </a>
+                      </li>
+                    )}
+                    {configuration_plateforme.telephone_support && (
+                      <li>
+                        <a
+                          href={`tel:${configuration_plateforme.telephone_support.split(/[·/]/)[0].replace(/\s+/g, '')}`}
+                          className="inline-flex items-center gap-2 hover:text-white transition-colors"
+                        >
+                          <Phone className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          <span className="font-mono text-[11px]">
+                            {configuration_plateforme.telephone_support}
+                          </span>
+                        </a>
+                      </li>
+                    )}
+                    {configuration_plateforme.site_web && (
+                      <li>
+                        <a
+                          href={configuration_plateforme.site_web}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 hover:text-white transition-colors"
+                        >
+                          <Globe className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          <span className="truncate">{configuration_plateforme.site_web}</span>
+                          <ExternalLink className="w-3 h-3 text-slate-500 shrink-0" />
+                        </a>
+                      </li>
+                    )}
+                    {configuration_plateforme.horaires_support && (
+                      <li className="inline-flex items-start gap-2 text-[11px] text-slate-400">
+                        <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                        <span>{configuration_plateforme.horaires_support}</span>
+                      </li>
+                    )}
+                  </ul>
+                </>
+              )}
               <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 tabular-nums">
-                {etablissements.length} établissements actifs · 15+ pays &amp; mode Monde ·{' '}
-                {TOUTES_LES_DEVISES.length} devises · RGPD &amp; Audit
+                {TOUS_LES_PAYS.filter((pays) => pays !== 'INTL').length} profils de pays ·{' '}
+                {TOUTES_LES_DEVISES.length} devises · Journal d’audit
               </div>
             </div>
           </div>
@@ -1125,8 +1143,12 @@ export const PageAccueil: React.FC = () => {
               <span className="font-medium text-slate-200">
                 © {new Date().getFullYear()} {configuration_plateforme.nom_plateforme}
               </span>
-              <span aria-hidden="true">·</span>
-              <span>{configuration_plateforme.entite_legale}</span>
+              {configuration_plateforme.entite_legale && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{configuration_plateforme.entite_legale}</span>
+                </>
+              )}
               <span aria-hidden="true">·</span>
               <span>Tous droits réservés</span>
             </div>
