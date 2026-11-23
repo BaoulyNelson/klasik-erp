@@ -444,7 +444,7 @@ export const BarreSuperieure: React.FC = () => {
             <div className="flex items-center justify-between px-3.5 py-2.5">
               <span>Devise locale & Conversion</span>
               <span className="font-mono text-xs text-slate-500">
-                {etablissement_actif.devise_defaut} · {TOUTES_LES_DEVISES.length} devises mondiales actives
+                {etablissement_actif.devise_defaut} · Toutes les devises ISO 4217
               </span>
             </div>
             <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">

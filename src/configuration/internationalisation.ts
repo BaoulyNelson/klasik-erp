@@ -330,7 +330,7 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     section_demo_sous_titre: 'Échangez avec notre équipe pour découvrir la plateforme.',
     section_tarifs_titre: 'Offres SaaS adaptées à chaque taille d’établissement',
     section_tarifs_sous_titre:
-      'Déploiement immédiat partout dans le monde. Fuseaux horaires, langues (FR/EN/ES/HT) et 10 devises inclus.',
+      'Déploiement immédiat partout dans le monde. Tous les pays ISO 3166-1, fuseaux IANA, langues FR/EN/ES/HT et devises ISO 4217.',
     haut_page: 'Haut de page',
   },
   en: {

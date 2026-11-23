@@ -3,7 +3,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from etablissements.validators import (
-    PROFILS_TELEPHONE,
+    valider_code_pays,
+    valider_code_devise,
     valider_fuseau_iana,
     valider_telephone_pays,
 )
@@ -87,14 +88,20 @@ class Etablissement(models.Model):
 
     def clean(self):
         erreurs = {}
-        pays_valide = isinstance(self.code_pays, str) and (
-            self.code_pays == "INTL" or self.code_pays in PROFILS_TELEPHONE
-        )
-        if not pays_valide:
-            erreurs["code_pays"] = "Le code pays n’est pas pris en charge."
-        if self.telephone and pays_valide:
+        try:
+            code_pays = valider_code_pays(self.code_pays)
+            self.code_pays = code_pays
+        except ValidationError as erreur:
+            erreurs.update(erreur.message_dict if hasattr(erreur, "message_dict") else {"code_pays": erreur.messages})
+            code_pays = ""
+        try:
+            devise = valider_code_devise(self.devise_defaut)
+            self.devise_defaut = devise
+        except ValidationError as erreur:
+            erreurs.update(erreur.message_dict if hasattr(erreur, "message_dict") else {"devise_defaut": erreur.messages})
+        if self.telephone and code_pays:
             try:
-                valider_telephone_pays(self.code_pays, self.telephone)
+                self.telephone = valider_telephone_pays(code_pays, self.telephone)
             except ValidationError as erreur:
                 erreurs.update(erreur.message_dict if hasattr(erreur, "message_dict") else {"telephone": erreur.messages})
         if self.code_pays == "INTL" and pays_valide:

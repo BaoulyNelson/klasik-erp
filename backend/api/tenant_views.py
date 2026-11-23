@@ -47,7 +47,8 @@ from etablissements.models import (
     TypeEtablissement,
 )
 from etablissements.validators import (
-    PROFILS_TELEPHONE,
+    valider_code_pays,
+    valider_code_devise,
     valider_fuseau_iana,
     valider_telephone_pays,
 )
@@ -324,10 +325,14 @@ class ListeEtablissementsView(APIView):
             raise ValidationError({"nom": "Le nom de l’établissement doit contenir entre 2 et 191 caractères."})
         if type_etablissement not in TypeEtablissement.values:
             raise ValidationError({"type": "Le type d’établissement est invalide."})
-        if not isinstance(code_pays, str) or (
-            code_pays != "INTL" and code_pays not in PROFILS_TELEPHONE
-        ):
-            raise ValidationError({"code_pays": "Le code pays n’est pas pris en charge."})
+        try:
+            code_pays = valider_code_pays(code_pays)
+        except DjangoValidationError as erreur:
+            raise ValidationError(erreur.message_dict if hasattr(erreur, "message_dict") else erreur.messages) from erreur
+        try:
+            configuration["devise_defaut"] = valider_code_devise(configuration.get("devise_defaut", "USD"))
+        except DjangoValidationError as erreur:
+            raise ValidationError(erreur.message_dict if hasattr(erreur, "message_dict") else erreur.messages) from erreur
         if not isinstance(ville, str) or len(ville.strip()) < 2 or len(ville.strip()) > 191:
             raise ValidationError({"ville": "La ville doit contenir entre 2 et 191 caractères."})
         telephone_etablissement = configuration.get("telephone", "")
@@ -858,14 +863,16 @@ class DetailEtablissementTenantView(APIView):
             if type_etablissement not in TypeEtablissement.values:
                 raise ValidationError({"type": "Le type d’établissement est invalide."})
             etablissement.type = type_etablissement
-        if "code_pays" in modifications and (
-            not isinstance(modifications["code_pays"], str)
-            or (
-                modifications["code_pays"] != "INTL"
-                and modifications["code_pays"] not in PROFILS_TELEPHONE
-            )
-        ):
-            raise ValidationError({"code_pays": "Le code pays n’est pas pris en charge."})
+        if "code_pays" in modifications:
+            try:
+                modifications["code_pays"] = valider_code_pays(modifications["code_pays"])
+            except DjangoValidationError as erreur:
+                raise ValidationError(erreur.message_dict if hasattr(erreur, "message_dict") else erreur.messages) from erreur
+        if "devise_defaut" in modifications:
+            try:
+                modifications["devise_defaut"] = valider_code_devise(modifications["devise_defaut"])
+            except DjangoValidationError as erreur:
+                raise ValidationError(erreur.message_dict if hasattr(erreur, "message_dict") else erreur.messages) from erreur
         champs_configuration_etablissement = (
             "code_pays",
             "nom_pays",

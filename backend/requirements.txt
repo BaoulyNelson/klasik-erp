@@ -10,3 +10,5 @@ google-auth==2.43.0
 requests==2.32.5
 gunicorn==23.0.0
 whitenoise==6.11.0
+phonenumbers==8.13.45
+pycountry==26.2.16

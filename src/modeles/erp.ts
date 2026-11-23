@@ -22,34 +22,9 @@ export const PALETTES_COULEUR_ETABLISSEMENT: {
   { valeur: 'navy', libelle: 'Bleu nuit', hex: '#1e3a8a' },
 ];
 
-export type CodeDevise =
-  | 'USD'
-  | 'EUR'
-  | 'CAD'
-  | 'GBP'
-  | 'CHF'
-  | 'XOF'
-  | 'XAF'
-  | 'MAD'
-  | 'BRL'
-  | 'HTG';
+export type CodeDevise = string;
 
-export type CodePays =
-  | 'FR'
-  | 'CA'
-  | 'US'
-  | 'GB'
-  | 'BE'
-  | 'CH'
-  | 'ES'
-  | 'DE'
-  | 'SN'
-  | 'CI'
-  | 'CM'
-  | 'MA'
-  | 'BR'
-  | 'HT'
-  | 'INTL';
+export type CodePays = string;
 
 export type IdentifiantRole =
   | 'SUPER_ADMIN'

@@ -402,7 +402,7 @@ export const PageAccueil: React.FC = () => {
                   </div>
                   <div>
                     <div className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
-                      {TOUTES_LES_DEVISES.length} devises
+                      Toutes les devises ISO
                     </div>
                     <div className="text-slate-500 dark:text-slate-400">{textes.stat_pwa}</div>
                   </div>
@@ -805,7 +805,7 @@ export const PageAccueil: React.FC = () => {
                 },
                 {
                   icone: Wallet,
-                  titre: `Paiements mondiaux & ${TOUTES_LES_DEVISES.length} devises`,
+                  titre: 'Paiements mondiaux & devises ISO',
                   description:
                     'Carte Stripe/Visa, virements SEPA/SWIFT, Mobile Money (Orange, Wave, M-Pesa, MonCash) et conversion instantanée en USD, EUR, CAD, GBP, XOF, CHF…',
                 },
@@ -1131,8 +1131,7 @@ export const PageAccueil: React.FC = () => {
                 </>
               )}
               <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 tabular-nums">
-                {TOUS_LES_PAYS.filter((pays) => pays !== 'INTL').length} profils de pays ·{' '}
-                {TOUTES_LES_DEVISES.length} devises · Journal d’audit
+                Tous les pays & devises mondiales (ISO) · Journal d’audit
               </div>
             </div>
           </div>

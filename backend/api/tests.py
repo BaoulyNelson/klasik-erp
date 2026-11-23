@@ -1733,6 +1733,38 @@ class TestsCreationEtablissementApi(TestCase):
         self.assertFalse(Etablissement.objects.filter(pk="tenant-cree-api").exists())
 
 
+    def test_creation_ecoles_pays_isos_hors_catalogue_restreint(self):
+        cas = (
+            ("JP", "JPY", "Asia/Tokyo", "+81312345678"),
+            ("NG", "NGN", "Africa/Lagos", "+2348012345678"),
+            ("TN", "TND", "Africa/Tunis", "+21620123456"),
+            ("IN", "INR", "Asia/Kolkata", "+912345678901"),
+        )
+        for index, (code_pays, devise, fuseau, telephone) in enumerate(cas):
+            etablissement = Etablissement(
+                id=f"iso-{code_pays}-{index}",
+                code=f"ISO-{code_pays}",
+                nom=f"École {code_pays}",
+                type="SCOLAIRE",
+                code_pays=code_pays,
+                nom_pays=code_pays,
+                fuseau_horaire=fuseau,
+                autorite_tutelle="Autorité nationale d’éducation",
+                ville="Capitale",
+                telephone=telephone,
+                devise_defaut=devise,
+                taux_change_usd=1,
+                services_actifs={"bibliotheque": False},
+                configuration={"devise_defaut": devise},
+            )
+            etablissement.full_clean()
+            etablissement.save()
+            etablissement.refresh_from_db()
+            self.assertEqual(etablissement.code_pays, code_pays)
+            self.assertEqual(etablissement.devise_defaut, devise)
+            self.assertTrue(etablissement.telephone.startswith("+"))
+
+
 class TestsIsolementSupervisionPlateforme(TestCase):
     def setUp(self):
         self.client = creer_client_api()

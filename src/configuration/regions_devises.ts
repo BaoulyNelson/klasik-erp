@@ -1,4 +1,6 @@
 import { CodeDevise, CodePays } from '../modeles/erp';
+import countries from 'world-countries';
+import { getCountryCallingCode } from 'libphonenumber-js';
 
 export interface MetadonneesDevise {
   code: CodeDevise;
@@ -483,7 +485,7 @@ export const PROFILS_PAYS: Record<CodePays, ProfilPays> = {
   },
 };
 
-export const TOUTES_LES_DEVISES: CodeDevise[] = [
+const DEVISES_BASE: CodeDevise[] = [
   'USD',
   'EUR',
   'CAD',
@@ -496,20 +498,68 @@ export const TOUTES_LES_DEVISES: CodeDevise[] = [
   'HTG',
 ];
 
-export const TOUS_LES_PAYS: CodePays[] = [
-  'FR',
-  'CA',
-  'US',
-  'GB',
-  'BE',
-  'CH',
-  'ES',
-  'DE',
-  'SN',
-  'CI',
-  'CM',
-  'MA',
-  'BR',
-  'HT',
-  'INTL',
-];
+const codes_pays_dynamiques = countries
+  .filter((pays) => /^[A-Z]{2}$/.test(pays.cca2))
+  .map((pays) => pays.cca2)
+  .sort();
+
+const devises_dynamiques = Array.from(
+  new Set([
+    ...DEVISES_BASE,
+    ...countries.flatMap((pays) => Object.keys(pays.currencies ?? {})),
+  ])
+).sort();
+
+export const TOUTES_LES_DEVISES_ISO: CodeDevise[] = devises_dynamiques;
+export const TOUTES_LES_DEVISES: CodeDevise[] = devises_dynamiques;
+
+export const TOUS_LES_PAYS: CodePays[] = codes_pays_dynamiques;
+
+countries.forEach((pays) => {
+  if (PROFILS_PAYS[pays.cca2]) return;
+  const devise_defaut = Object.keys(pays.currencies ?? {})[0] ?? 'USD';
+  let indicatif = '';
+  try {
+    indicatif = `+${getCountryCallingCode(pays.cca2 as Parameters<typeof getCountryCallingCode>[0])}`;
+  } catch {
+    indicatif = '+';
+  }
+  PROFILS_PAYS[pays.cca2] = {
+    code: pays.cca2,
+    nom: pays.translations?.fra?.common ?? pays.name.common,
+    indicatif_telephonique: indicatif,
+    validation_telephone: {
+      longueurs_locales: [],
+      exemple_local: '',
+      format_masque: 'Format international validé selon le pays',
+    },
+    ville_defaut: pays.capital?.[0] ?? '',
+    fuseau_horaire: 'UTC',
+    devise_defaut,
+    autorite_tutelle: 'Autorité nationale d’éducation',
+    echelle_notation_defaut: 100,
+    note_passage_defaut: 60,
+    modes_paiement_preferes: [
+      'Mobile Money',
+      'Virement bancaire',
+      'Espèces',
+    ],
+    jours_feries: [],
+  };
+});
+
+devises_dynamiques.forEach((code) => {
+  if (CATALOGUE_DEVISES[code]) return;
+  const nombre = new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: code,
+    maximumFractionDigits: 2,
+  });
+  CATALOGUE_DEVISES[code] = {
+    code,
+    symbole: nombre.formatToParts(0).find((partie) => partie.type === 'currency')?.value ?? code,
+    libelle: `${code} (ISO 4217)`,
+    decimales: 2,
+    pivot_htg_par_unite: 0,
+  };
+});

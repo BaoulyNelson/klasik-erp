@@ -1,5 +1,9 @@
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import available_timezones
+
+import phonenumbers
+import pycountry
 
 from django.core.exceptions import ValidationError
 
@@ -49,56 +53,47 @@ def valider_fuseau_iana(fuseau: str) -> None:
         raise ValidationError("Un fuseau horaire IANA est obligatoire pour un établissement INTL.")
     if fuseau.strip().upper() == "UTC":
         return
+    if fuseau.strip() not in available_timezones():
+        raise ValidationError("Le fuseau horaire doit être un identifiant IANA valide.")
     try:
         ZoneInfo(fuseau.strip())
     except (ZoneInfoNotFoundError, ValueError) as erreur:
         raise ValidationError("Le fuseau horaire doit être un identifiant IANA valide.") from erreur
 
 
+def valider_code_pays(code_pays: str) -> str:
+    if not isinstance(code_pays, str):
+        raise ValidationError({"code_pays": "Le code pays doit être une chaîne ISO 3166-1."})
+    propre = code_pays.strip().upper()
+    if pycountry.countries.get(alpha_2=propre) is None:
+        raise ValidationError({"code_pays": "Le code pays doit être valide selon ISO 3166-1."})
+    return propre
+
+
+def valider_code_devise(code_devise: str) -> str:
+    if not isinstance(code_devise, str):
+        raise ValidationError({"devise_defaut": "La devise doit être une chaîne ISO 4217."})
+    propre = code_devise.strip().upper()
+    if pycountry.currencies.get(alpha_3=propre) is None:
+        raise ValidationError({"devise_defaut": "La devise doit être valide selon ISO 4217."})
+    return propre
+
+
 def valider_telephone_pays(code_pays: str, telephone: str, champ="telephone") -> str:
     propre = telephone.strip() if isinstance(telephone, str) else ""
-    if code_pays == "INTL":
-        indicatif_attendu = "+216"
-        longueurs = (7, 8, 9, 10, 11, 12)
-        if propre.startswith("+"):
-            indicatif_attendu = next(
-                (
-                    indicatif
-                    for indicatif in sorted(INDICATIFS_INTL, key=len, reverse=True)
-                    if propre.startswith(indicatif)
-                ),
-                "",
-            )
-            if not indicatif_attendu:
-                raise ValidationError({champ: "L’indicatif international n’est pas reconnu."})
-            longueurs = INDICATIFS_INTL[indicatif_attendu]
-    else:
-        profil = PROFILS_TELEPHONE.get(code_pays)
-        if profil is None:
-            raise ValidationError({"code_pays": "Le code pays n’est pas pris en charge."})
-        indicatif_attendu, longueurs = profil
-
     if not propre:
         raise ValidationError({champ: "Le numéro de téléphone est obligatoire."})
     if propre.startswith("00"):
         raise ValidationError({champ: "Le préfixe « 00 » ne doit pas remplacer l’indicatif verrouillé."})
-
-    local = propre
-    if propre.startswith("+"):
-        if not propre.startswith(indicatif_attendu):
-            raise ValidationError(
-                {champ: f"L’indicatif doit correspondre au pays sélectionné ({indicatif_attendu})."}
-            )
-        local = propre[len(indicatif_attendu) :]
-    if not re.fullmatch(r"[0-9\s().-]+", local):
-        raise ValidationError({champ: "Le numéro doit contenir uniquement des chiffres et séparateurs usuels."})
-    chiffres_locaux = re.sub(r"\D", "", local)
-    chiffres_indicatif = re.sub(r"\D", "", indicatif_attendu)
-    if len(chiffres_locaux) not in longueurs:
-        longueurs_libelle = ", ".join(str(longueur) for longueur in longueurs)
-        raise ValidationError(
-            {champ: f"Le numéro local doit contenir exactement {longueurs_libelle} chiffre(s)."}
-        )
-    if len(chiffres_indicatif) + len(chiffres_locaux) > 15:
-        raise ValidationError({champ: "Le numéro dépasse la longueur maximale E.164 de 15 chiffres."})
-    return propre
+    if code_pays == "INTL":
+        raise ValidationError({"code_pays": "Sélectionnez un pays ISO 3166-1."})
+    code_pays_normalise = valider_code_pays(code_pays)
+    try:
+        numero = phonenumbers.parse(propre, code_pays_normalise)
+    except phonenumbers.NumberParseException as erreur:
+        raise ValidationError({champ: "Le numéro de téléphone est invalide pour ce pays."}) from erreur
+    if phonenumbers.region_code_for_number(numero) != code_pays_normalise:
+        raise ValidationError({champ: f"L’indicatif doit correspondre au pays sélectionné ({code_pays_normalise})."})
+    if not phonenumbers.is_possible_number(numero):
+        raise ValidationError({champ: "Le numéro de téléphone n’est pas possible dans ce pays."})
+    return phonenumbers.format_number(numero, phonenumbers.PhoneNumberFormat.E164)

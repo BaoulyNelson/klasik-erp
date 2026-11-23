@@ -1,4 +1,5 @@
 import { INDICATIFS_INTERNATIONAUX, PROFILS_PAYS } from '../configuration/regions_devises';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
   Apprenant,
   CodePays,
@@ -104,14 +105,12 @@ export function valider_telephone_pays(
   saisie: string,
   indicatif_intl_choisi?: string
 ): ResultatValidationTelephone {
-  const profil = PROFILS_PAYS[code_pays];
-  const indicatif_attendu = obtenir_indicatif_verrouille(code_pays, indicatif_intl_choisi);
-  const intl_spec =
+  const profil = PROFILS_PAYS[code_pays] ?? PROFILS_PAYS.INTL;
+  const indicatif_attendu =
     code_pays === 'INTL'
-      ? INDICATIFS_INTERNATIONAUX.find((i) => i.indicatif === indicatif_attendu)
-      : undefined;
-  const longueurs_autorisees = intl_spec?.longueurs ?? profil.validation_telephone.longueurs_locales;
-
+      ? obtenir_indicatif_verrouille(code_pays, indicatif_intl_choisi)
+      : profil.indicatif_telephonique;
+  const longueurs_autorisees = profil.validation_telephone.longueurs_locales;
   const brut = (saisie || '').trim();
   if (!brut) {
     return {
@@ -120,18 +119,6 @@ export function valider_telephone_pays(
       indicatif: indicatif_attendu,
       numero_local_chiffres: '',
       numero_normalise: indicatif_attendu,
-      longueurs_autorisees,
-    };
-  }
-
-  // Bloquer toute tentative de modification manuelle d'un autre indicatif (+xxx)
-  if (brut.startsWith('+') && !brut.startsWith(indicatif_attendu)) {
-    return {
-      valide: false,
-      erreur: `Indicatif incohérent : pour ${profil.nom}, l'indicatif est verrouillé sur ${indicatif_attendu}.`,
-      indicatif: indicatif_attendu,
-      numero_local_chiffres: '',
-      numero_normalise: brut,
       longueurs_autorisees,
     };
   }
@@ -145,59 +132,35 @@ export function valider_telephone_pays(
       longueurs_autorisees,
     };
   }
-
-  let partie_locale = brut;
-  if (brut.startsWith(indicatif_attendu)) {
-    partie_locale = brut.slice(indicatif_attendu.length);
-  }
-
-  // Rejeter la présence de caractères alphabétiques ou symboles invalides
-  if (/[a-zA-Z]/.test(partie_locale)) {
+  const numero_parse = parsePhoneNumberFromString(
+    brut.startsWith('+') ? brut : `${indicatif_attendu}${brut.replace(/\D/g, '')}`,
+    code_pays as Parameters<typeof parsePhoneNumberFromString>[1]
+  );
+  if (!numero_parse || !numero_parse.isPossible()) {
     return {
       valide: false,
-      erreur: 'Le numéro de téléphone ne doit contenir que des chiffres.',
+      erreur: `Format de téléphone invalide pour ${profil.nom} (${indicatif_attendu}).`,
       indicatif: indicatif_attendu,
-      numero_local_chiffres: partie_locale.replace(/\D/g, ''),
-      numero_normalise: `${indicatif_attendu} ${partie_locale}`,
+      numero_local_chiffres: brut.replace(/\D/g, ''),
+      numero_normalise: numero_parse?.formatInternational() ?? brut,
       longueurs_autorisees,
     };
   }
-
-  const chiffres_locaux = partie_locale.replace(/\D/g, '');
-  const chiffres_indicatif = indicatif_attendu.replace(/\D/g, '');
-  const longueur_totale_e164 = chiffres_indicatif.length + chiffres_locaux.length;
-
-  if (!longueurs_autorisees.includes(chiffres_locaux.length)) {
-    const libelle_longueur =
-      longueurs_autorisees.length === 1
-        ? `${longueurs_autorisees[0]} chiffres`
-        : `${Math.min(...longueurs_autorisees)} à ${Math.max(...longueurs_autorisees)} chiffres`;
+  if (numero_parse.country && numero_parse.country !== code_pays) {
     return {
       valide: false,
-      erreur: `Format invalide pour ${profil.nom} (${indicatif_attendu}) : ${libelle_longueur} locaux requis (actuellement ${chiffres_locaux.length}). Ex: ${indicatif_attendu} ${profil.validation_telephone.exemple_local}`,
+      erreur: `Indicatif incohérent : pour ${profil.nom}, l'indicatif est verrouillé sur ${indicatif_attendu}.`,
       indicatif: indicatif_attendu,
-      numero_local_chiffres: chiffres_locaux,
-      numero_normalise: `${indicatif_attendu} ${formater_numero_local(chiffres_locaux)}`.trim(),
+      numero_local_chiffres: '',
+      numero_normalise: numero_parse.formatInternational(),
       longueurs_autorisees,
     };
   }
-
-  if (longueur_totale_e164 > 15) {
-    return {
-      valide: false,
-      erreur: 'Le numéro complet dépasse la norme internationale E.164 (15 chiffres maximum).',
-      indicatif: indicatif_attendu,
-      numero_local_chiffres: chiffres_locaux,
-      numero_normalise: `${indicatif_attendu} ${formater_numero_local(chiffres_locaux)}`.trim(),
-      longueurs_autorisees,
-    };
-  }
-
   return {
     valide: true,
     indicatif: indicatif_attendu,
-    numero_local_chiffres: chiffres_locaux,
-    numero_normalise: `${indicatif_attendu} ${formater_numero_local(chiffres_locaux)}`,
+    numero_local_chiffres: numero_parse.nationalNumber.toString(),
+    numero_normalise: numero_parse.formatInternational(),
     longueurs_autorisees,
   };
 }
