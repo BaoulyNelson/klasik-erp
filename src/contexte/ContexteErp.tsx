@@ -156,7 +156,7 @@ function obtenir_message_erreur_google(erreur: unknown): string {
     'auth/popup-closed-by-user':
       'La fenêtre de connexion Google a été fermée avant la validation.',
     'auth/cancelled-popup-request':
-      'La fenêtre de connexion Google a été fermée avant la validation.',
+      'Une autre tentative de connexion Google a remplacé celle-ci. Réessayez.',
     'auth/operation-not-allowed':
       'La connexion Google n’est pas activée dans Firebase Authentication.',
     'auth/unauthorized-domain':
@@ -166,9 +166,13 @@ function obtenir_message_erreur_google(erreur: unknown): string {
     'auth/invalid-api-key':
       'La configuration Firebase est invalide. Contactez l’administrateur.',
   };
-  if (messages[code]) return messages[code];
-  if (code.startsWith('auth/')) {
-    return 'La connexion Google a échoué. Vérifiez la configuration ou réessayez.';
+  if (code) {
+    const message =
+      messages[code] ??
+      (code.startsWith('auth/')
+        ? 'La connexion Google a échoué. Vérifiez la configuration ou réessayez.'
+        : 'Impossible de finaliser la connexion Google.');
+    return `${message} (code : ${code})`;
   }
   return erreur instanceof Error
     ? erreur.message

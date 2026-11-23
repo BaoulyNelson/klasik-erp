@@ -80,6 +80,15 @@ class TestsAuthentificationApi(TestCase):
             role="ENSEIGNANT",
         )
 
+    def test_entete_coop_autorise_les_popups_google(self):
+        reponse = self.client.get("/api/sante/")
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(
+            reponse.headers["Cross-Origin-Opener-Policy"],
+            "same-origin-allow-popups",
+        )
+
     @override_settings(
         DEBUG=True,
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
