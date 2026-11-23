@@ -229,7 +229,7 @@ export const PageAccueil: React.FC = () => {
             </a>
           </nav>
 
-          <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1 sm:gap-2">
+          <div className="flex w-full min-w-0 max-w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:gap-2">
             <select
               aria-label="Langue"
               value={langue_active}
