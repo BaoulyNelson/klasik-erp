@@ -102,6 +102,24 @@ export const VueAdministrationPlateforme: React.FC = () => {
   }, [configuration_plateforme]);
 
   useEffect(() => {
+    let effet_actif = true;
+    void requeteApi<ConfigurationPlateforme>('/plateforme/configuration/')
+      .then((configuration) => {
+        if (!effet_actif) return;
+        definir_ebauche({
+          ...configuration,
+          url_logo: configuration.url_logo || undefined,
+        });
+      })
+      .catch(() => {
+        // Conserver le brouillon déjà chargé dans le contexte si l’API est temporairement indisponible.
+      });
+    return () => {
+      effet_actif = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!cible_details) {
       definir_historique_forfaits([]);
       definir_erreur_historique(null);
