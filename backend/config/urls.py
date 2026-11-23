@@ -1,5 +1,10 @@
+from pathlib import Path
+
+from django.conf import settings
 from django.contrib import admin
-from django.urls import include, path
+from django.http import FileResponse, Http404
+from django.urls import include, path, re_path
+from django.views.decorators.cache import never_cache
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from api.views import (
     ChangerMotDePasseView,
@@ -17,23 +22,56 @@ from api.views import (
     SanteView,
 )
 
+
+@never_cache
+def application_react(request, chemin=""):
+    index = Path(settings.BASE_DIR).parent / "dist" / "index.html"
+    if not index.exists():
+        raise Http404("Build du frontend introuvable.")
+    return FileResponse(open(index, "rb"), content_type="text/html; charset=utf-8")
+
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/sante/", SanteView.as_view(), name="sante"),
     path("api/auth/csrf/", CookieCsrfView.as_view(), name="csrf-cookie"),
     path("api/contact/", ContactPublicView.as_view(), name="contact-public"),
-    path("api/auth/token/", ObtenirJetonsVerrouilleView.as_view(), name="obtenir-jetons"),
-    path("api/auth/token/refresh/", RafraichirJetonsCookieView.as_view(), name="rafraichir-jeton"),
+    path(
+        "api/auth/token/", ObtenirJetonsVerrouilleView.as_view(), name="obtenir-jetons"
+    ),
+    path(
+        "api/auth/token/refresh/",
+        RafraichirJetonsCookieView.as_view(),
+        name="rafraichir-jeton",
+    ),
     path("api/auth/logout/", RevoquerJetonsCookieView.as_view(), name="revoquer-jeton"),
     path("api/auth/demo/", ConnexionDemoView.as_view(), name="connexion-demo"),
     path("api/auth/me/", ProfilCourantView.as_view(), name="profil-courant"),
-    path("api/auth/profile/", ProfilUtilisateurView.as_view(), name="profil-utilisateur"),
-    path("api/auth/password/reset/", DemanderReinitialisationView.as_view(), name="demander-reinitialisation"),
-    path("api/auth/password/reset/confirm/", ConfirmerReinitialisationView.as_view(), name="confirmer-reinitialisation"),
-    path("api/auth/password/change/", ChangerMotDePasseView.as_view(), name="changer-mot-de-passe"),
+    path(
+        "api/auth/profile/", ProfilUtilisateurView.as_view(), name="profil-utilisateur"
+    ),
+    path(
+        "api/auth/password/reset/",
+        DemanderReinitialisationView.as_view(),
+        name="demander-reinitialisation",
+    ),
+    path(
+        "api/auth/password/reset/confirm/",
+        ConfirmerReinitialisationView.as_view(),
+        name="confirmer-reinitialisation",
+    ),
+    path(
+        "api/auth/password/change/",
+        ChangerMotDePasseView.as_view(),
+        name="changer-mot-de-passe",
+    ),
     path("api/auth/google/", ConnexionGoogleView.as_view(), name="connexion-google"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema-api"),
-    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema-api"), name="documentation-api"),
+    path(
+        "api/docs/",
+        SpectacularSwaggerView.as_view(url_name="schema-api"),
+        name="documentation-api",
+    ),
     path("api/", include("scolarite.urls")),
     path("api/", include("pedagogie.urls")),
     path("api/", include("finances.urls")),
@@ -43,4 +81,6 @@ urlpatterns = [
     path("api/", include("campus_numerique.urls")),
     path("api/", include("securite.urls")),
     path("api/", include("api.urls")),
+    # Toujours en dernier : toutes les autres pages sont gérées par React (React Router)
+    re_path(r"^(?!api/|admin/|static/|media/|assets/).*$", application_react),
 ]
