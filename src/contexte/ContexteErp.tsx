@@ -1380,14 +1380,15 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (!SOURCE_API) return;
     let effet_actif = true;
-    void requeteApi<{ url_logo: string }>('/plateforme/configuration/')
-      .then(({ url_logo }) => {
+    void requeteApi<ConfigurationPlateforme>('/plateforme/configuration/')
+      .then((configuration) => {
         if (!effet_actif) return;
         definir_etat((precedent) => ({
           ...precedent,
           configuration_plateforme: {
             ...precedent.configuration_plateforme,
-            url_logo: url_logo || undefined,
+            ...configuration,
+            url_logo: configuration.url_logo || undefined,
           },
         }));
       })
@@ -7792,27 +7793,30 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       };
 
-      if (
-        SOURCE_API &&
-        Object.prototype.hasOwnProperty.call(modifications, 'url_logo')
-      ) {
-        void requeteApi<{ url_logo: string }>('/plateforme/configuration/', {
+      if (SOURCE_API) {
+        const modifications_api = Object.prototype.hasOwnProperty.call(
+          modifications,
+          'url_logo'
+        )
+          ? { ...modifications, url_logo: modifications.url_logo ?? null }
+          : modifications;
+        void requeteApi<ConfigurationPlateforme>('/plateforme/configuration/', {
           method: 'PATCH',
-          body: { url_logo: modifications.url_logo ?? null },
+          body: modifications_api,
         })
           .then((configuration) =>
             appliquer_modifications({
-              ...modifications,
+              ...configuration,
               url_logo: configuration.url_logo || undefined,
             })
           )
           .catch((erreur: unknown) => {
             ajouter_toast({
-              titre: 'Logo non enregistré',
+              titre: 'Configuration plateforme non enregistrée',
               description:
                 erreur instanceof Error
                   ? erreur.message
-                  : 'Le serveur n’a pas pu enregistrer le logo de la plateforme.',
+                  : 'Le serveur n’a pas pu enregistrer la configuration de la plateforme.',
               variante: 'error',
             });
           });
@@ -7832,14 +7836,42 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const reinitialiser_configuration_plateforme = useCallback(() => {
-    definir_etat((precedent) => ({
-      ...precedent,
-      configuration_plateforme: CONFIGURATION_PLATEFORME_DEFAUT,
-    }));
-    ajouter_toast({
-      titre: 'Configuration plateforme réinitialisée',
-      variante: 'info',
-    });
+    const appliquer_reinitialisation = (configuration: ConfigurationPlateforme) => {
+      definir_etat((precedent) => ({
+        ...precedent,
+        configuration_plateforme: configuration,
+      }));
+      ajouter_toast({
+        titre: 'Configuration plateforme réinitialisée',
+        variante: 'info',
+      });
+    };
+
+    if (SOURCE_API) {
+      void requeteApi<ConfigurationPlateforme>('/plateforme/configuration/', {
+        method: 'PATCH',
+        body: { ...CONFIGURATION_PLATEFORME_DEFAUT, url_logo: null },
+      })
+        .then((configuration) =>
+          appliquer_reinitialisation({
+            ...configuration,
+            url_logo: configuration.url_logo || undefined,
+          })
+        )
+        .catch((erreur: unknown) => {
+          ajouter_toast({
+            titre: 'Configuration plateforme non réinitialisée',
+            description:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Le serveur n’a pas pu réinitialiser la configuration de la plateforme.',
+            variante: 'error',
+          });
+        });
+      return;
+    }
+
+    appliquer_reinitialisation(CONFIGURATION_PLATEFORME_DEFAUT);
   }, [ajouter_toast]);
 
   const ajouter_unite_academique = useCallback(

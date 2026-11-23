@@ -38,7 +38,10 @@ from api.cookies import (
     reponse_session_cookie,
 )
 from api.permissions import permissions_utilisateur
-from api.serializers import ProfilUtilisateurSerializer
+from api.serializers import (
+    ConfigurationMarquePlateformeSerializer,
+    ProfilUtilisateurSerializer,
+)
 from comptes.models import (
     AffiliationEtablissement,
     JetonReinitialisation,
@@ -326,41 +329,41 @@ class ConfigurationPlateformeView(APIView):
             return [AllowAny()]
         return super().get_permissions()
 
-    @extend_schema(
-        responses=inline_serializer(
-            name="LogoPlateforme",
-            fields={"url_logo": serializers.CharField(allow_blank=True)},
-        )
-    )
+    @extend_schema(responses=ConfigurationMarquePlateformeSerializer)
     def get(self, request):
         configuration = ConfigurationMarquePlateforme.objects.filter(
             pk="principale"
         ).first()
-        return Response({"url_logo": configuration.url_logo if configuration else ""})
+        serializer = ConfigurationMarquePlateformeSerializer(
+            configuration or ConfigurationMarquePlateforme()
+        )
+        return Response(serializer.data)
 
     @extend_schema(
-        request=inline_serializer(
-            name="ModifierLogoPlateforme",
-            fields={"url_logo": serializers.CharField(allow_blank=True, allow_null=True)},
-        ),
-        responses=OpenApiTypes.OBJECT,
+        request=ConfigurationMarquePlateformeSerializer,
+        responses=ConfigurationMarquePlateformeSerializer,
     )
     def patch(self, request):
         if "plateforme:gerer" not in permissions_utilisateur(request.user, None):
             raise PermissionDenied("L’autorisation plateforme:gerer est requise.")
-        if not isinstance(request.data, dict) or set(request.data) != {"url_logo"}:
-            raise ValidationError({"url_logo": "Le champ url_logo est obligatoire."})
-        url_logo = request.data["url_logo"]
-        if url_logo is None or url_logo == "":
-            url_logo = ""
-        else:
-            url_logo = valider_url_image(url_logo, "url_logo")
+        if not isinstance(request.data, dict) or not request.data:
+            raise ValidationError("Au moins un champ de configuration est requis.")
         configuration, _ = ConfigurationMarquePlateforme.objects.get_or_create(
             pk="principale"
         )
-        configuration.url_logo = url_logo
-        configuration.save(update_fields=("url_logo", "modifie_le"))
-        return Response({"url_logo": configuration.url_logo})
+        serializer = ConfigurationMarquePlateformeSerializer(
+            configuration,
+            data=request.data,
+            partial=True,
+        )
+        champs_inconnus = set(request.data) - set(serializer.fields)
+        if champs_inconnus:
+            raise ValidationError(
+                {"champs": f"Champs inconnus : {', '.join(sorted(champs_inconnus))}."}
+            )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class ConnexionDemoView(APIView):

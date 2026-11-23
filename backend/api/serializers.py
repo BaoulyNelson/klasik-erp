@@ -2,6 +2,44 @@ from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 
 from comptes.models import Utilisateur
+from etablissements.models import ConfigurationMarquePlateforme
+from api.validators import valider_url_image
+
+
+class ConfigurationMarquePlateformeSerializer(serializers.ModelSerializer):
+    nom_plateforme = serializers.CharField(max_length=120, required=False)
+    url_logo = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    courriel_support = serializers.EmailField(
+        max_length=254,
+        allow_blank=True,
+        required=False,
+    )
+    site_web = serializers.URLField(max_length=255, allow_blank=True, required=False)
+
+    class Meta:
+        model = ConfigurationMarquePlateforme
+        fields = (
+            "nom_plateforme",
+            "accroche_courte",
+            "slogan",
+            "titre_banniere",
+            "resume_pied_page",
+            "horaires_support",
+            "url_logo",
+            "initiales_logo",
+            "couleur_marque",
+            "courriel_support",
+            "telephone_support",
+            "site_web",
+            "adresse_siege",
+            "entite_legale",
+            "autoriser_creation_autonome",
+        )
+
+    def validate_url_logo(self, value):
+        if value is None or value == "":
+            return ""
+        return valider_url_image(value, "url_logo")
 
 
 class AffiliationUtilisateurSerializer(serializers.Serializer):

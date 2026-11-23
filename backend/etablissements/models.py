@@ -142,7 +142,67 @@ class HistoriqueAbonnementSaas(models.Model):
 
 class ConfigurationMarquePlateforme(models.Model):
     cle = models.CharField(max_length=32, primary_key=True, default="principale")
+    nom_plateforme = models.CharField(max_length=120, default="Klasik ERP")
+    accroche_courte = models.CharField(max_length=255, blank=True, default="")
+    slogan = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Plateforme SaaS Multi-Tenant · Déploiement Mondial · 10 Devises",
+    )
+    titre_banniere = models.CharField(
+        max_length=255,
+        blank=True,
+        default="L’ERP éducatif mondial qui s’adapte automatiquement à votre institution.",
+    )
+    resume_pied_page = models.TextField(
+        blank=True,
+        default=(
+            "Infrastructure SaaS multi-établissements internationale dédiée aux écoles "
+            "professionnelles, établissements scolaires et universités LMD. Multi-pays, "
+            "multi-devises, caisse QR et résilience hors-ligne."
+        ),
+    )
+    horaires_support = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Lun–Sam · Support multi-fuseaux (Amériques · Europe · Afrique)",
+    )
     url_logo = models.TextField(blank=True, default="")
+    initiales_logo = models.CharField(max_length=3, default="K")
+    couleur_marque = models.CharField(
+        max_length=16,
+        choices=[
+            ("indigo", "Indigo"),
+            ("blue", "Bleu"),
+            ("emerald", "Émeraude"),
+            ("amber", "Ambre"),
+            ("violet", "Violet"),
+            ("slate", "Anthracite"),
+        ],
+        default="slate",
+    )
+    courriel_support = models.EmailField(
+        max_length=254,
+        blank=True,
+        default="support@klasik-erp.org",
+    )
+    telephone_support = models.CharField(
+        max_length=255,
+        blank=True,
+        default="+33 1 86 95 20 10 · +1 (514) 555-0190",
+    )
+    site_web = models.CharField(max_length=255, blank=True, default="https://klasik-erp.org")
+    adresse_siege = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Paris · Montréal · Dakar · Londres · Port-au-Prince",
+    )
+    entite_legale = models.CharField(
+        max_length=191,
+        blank=True,
+        default="Klasik Technologies Éducatives SAS",
+    )
+    autoriser_creation_autonome = models.BooleanField(default=True)
     modifie_le = models.DateTimeField(auto_now=True)
 
     class Meta:

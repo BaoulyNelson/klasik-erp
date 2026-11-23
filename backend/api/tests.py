@@ -477,41 +477,91 @@ class TestsAuthentificationApi(TestCase):
         self.utilisateur.refresh_from_db()
         self.assertEqual(self.utilisateur.nom_complet, "Nouveau nom")
 
-    def test_lecture_du_logo_plateforme_est_publique_et_limitee_au_logo(self):
+    def test_lecture_de_la_configuration_publique_plateforme(self):
         url_logo = "data:image/png;base64,iVBORw0KGgo="
-        ConfigurationMarquePlateforme.objects.create(url_logo=url_logo)
+        ConfigurationMarquePlateforme.objects.create(
+            url_logo=url_logo,
+            nom_plateforme="Klasik Public",
+            entite_legale="Klasik Public SAS",
+        )
         client_anonyme = APIClient()
 
         reponse = client_anonyme.get("/api/plateforme/configuration/")
 
         self.assertEqual(reponse.status_code, 200)
-        self.assertEqual(reponse.json(), {"url_logo": url_logo})
+        self.assertEqual(reponse.json()["url_logo"], url_logo)
+        self.assertEqual(reponse.json()["nom_plateforme"], "Klasik Public")
+        self.assertEqual(reponse.json()["entite_legale"], "Klasik Public SAS")
+        self.assertNotIn("cle", reponse.json())
+        self.assertNotIn("modifie_le", reponse.json())
 
-    def test_logo_plateforme_est_persistant_et_reserve_au_superadmin(self):
+    def test_configuration_plateforme_est_persistante_et_reservee_au_superadmin(self):
         url_logo = "data:image/png;base64,iVBORw0KGgo="
         self.client.force_authenticate(self.utilisateur)
         refusee = self.client.patch(
             "/api/plateforme/configuration/",
-            {"url_logo": url_logo},
+            {"entite_legale": "Non autorisé"},
             format="json",
         )
         self.assertEqual(refusee.status_code, 403)
 
         superutilisateur = Utilisateur.objects.create_superuser(
-            "logo.plateforme@example.org",
-            "MotDePasseLogo-2026",
+            "marque.plateforme@example.org",
+            "MotDePasseMarque-2026",
         )
         self.client.force_authenticate(superutilisateur)
+        valeurs = {
+            "nom_plateforme": "Klasik Personnalisé",
+            "accroche_courte": "ERP international",
+            "slogan": "Un slogan personnalisé",
+            "titre_banniere": "Un titre personnalisé",
+            "resume_pied_page": "Présentation mise à jour.",
+            "horaires_support": "Lun–Ven · 09h–17h",
+            "url_logo": url_logo,
+            "initiales_logo": "KP",
+            "couleur_marque": "indigo",
+            "courriel_support": "aide@example.org",
+            "telephone_support": "+509 3700-0000",
+            "site_web": "https://example.org",
+            "adresse_siege": "Port-au-Prince",
+            "entite_legale": "Klasik Personnalisé SAS",
+            "autoriser_creation_autonome": False,
+        }
         modification = self.client.patch(
             "/api/plateforme/configuration/",
-            {"url_logo": url_logo},
+            valeurs,
             format="json",
         )
         lecture = self.client.get("/api/plateforme/configuration/")
 
-        self.assertEqual(modification.status_code, 200)
+        self.assertEqual(modification.status_code, 200, modification.json())
         self.assertEqual(lecture.status_code, 200)
-        self.assertEqual(lecture.json()["url_logo"], url_logo)
+        for champ, valeur in valeurs.items():
+            self.assertEqual(lecture.json()[champ], valeur)
+
+        configuration = ConfigurationMarquePlateforme.objects.get(pk="principale")
+        self.assertEqual(configuration.nom_plateforme, valeurs["nom_plateforme"])
+        self.assertEqual(configuration.entite_legale, valeurs["entite_legale"])
+        self.assertFalse(configuration.autoriser_creation_autonome)
+
+        effacement_logo = self.client.patch(
+            "/api/plateforme/configuration/",
+            {"url_logo": None},
+            format="json",
+        )
+        self.assertEqual(effacement_logo.status_code, 200, effacement_logo.json())
+        self.assertEqual(effacement_logo.json()["url_logo"], "")
+        self.assertEqual(
+            effacement_logo.json()["nom_plateforme"],
+            valeurs["nom_plateforme"],
+        )
+
+        invalide = self.client.patch(
+            "/api/plateforme/configuration/",
+            {"site_web": "pas une url"},
+            format="json",
+        )
+        self.assertEqual(invalide.status_code, 400)
 
     def test_creation_etablissement_accepte_un_logo_image_de_plus_de_500_caracteres(self):
         logo = "data:image/png;base64," + base64.b64encode(
