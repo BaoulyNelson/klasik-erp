@@ -229,7 +229,7 @@ export const PageAccueil: React.FC = () => {
             </a>
           </nav>
 
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1 sm:gap-2">
             <select
               aria-label="Langue"
               value={langue_active}
@@ -259,11 +259,15 @@ export const PageAccueil: React.FC = () => {
                     onClick={() => definir_mode_affichage('espace_travail')}
                   >
                     <span className="whitespace-nowrap">
-                      {textes.btn_mon_espace} (
-                      {utilisateur_actif.est_super_admin_plateforme
-                        ? 'Console SaaS'
-                        : etablissement_actif.nom_court}
-                      )
+                      {textes.btn_mon_espace}
+                      <span className="hidden md:inline">
+                        {' '}
+                        (
+                        {utilisateur_actif.est_super_admin_plateforme
+                          ? 'Console SaaS'
+                          : etablissement_actif.nom_court}
+                        )
+                      </span>
                     </span>
                     <ArrowRight className="w-4 h-4" />
                   </Bouton>
@@ -279,14 +283,16 @@ export const PageAccueil: React.FC = () => {
                     </Bouton>
                   )
                 )}
-                <Bouton
-                  variante="secondaire"
-                  taille="sm"
-                  onClick={() => definir_ecran_connexion_ouvert(true)}
-                  className="hidden sm:inline-flex whitespace-nowrap"
-                >
-                  <span>{textes.btn_changer_compte}</span>
-                </Bouton>
+                <div className="hidden md:block">
+                  <Bouton
+                    variante="secondaire"
+                    taille="sm"
+                    onClick={() => definir_ecran_connexion_ouvert(true)}
+                    className="whitespace-nowrap"
+                  >
+                    <span>{textes.btn_changer_compte}</span>
+                  </Bouton>
+                </div>
                 <Bouton
                   variante="fantome"
                   taille="sm"
@@ -296,7 +302,7 @@ export const PageAccueil: React.FC = () => {
                   className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950/30 whitespace-nowrap"
                 >
                   <LogOut className="w-4 h-4" />
-                  <span className="hidden sm:inline">{textes.btn_deconnexion}</span>
+                  <span className="hidden md:inline">{textes.btn_deconnexion}</span>
                 </Bouton>
               </>
             ) : (
