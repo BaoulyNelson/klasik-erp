@@ -186,6 +186,8 @@ def role_utilisateur_etablissement(utilisateur, etablissement) -> str:
 
 def permissions_utilisateur(utilisateur, etablissement) -> set[str]:
     role = role_utilisateur_etablissement(utilisateur, etablissement)
+    if etablissement is not None and not etablissement.est_actif:
+        return {"parametres:gerer"} if role in {"DIRECTEUR", "ADMIN_ETAB"} else set()
     if role == RoleUtilisateur.SUPER_ADMIN:
         surcharge = SurchargePermissions.objects.filter(
             etablissement=etablissement,

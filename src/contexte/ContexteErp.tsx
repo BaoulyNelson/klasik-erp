@@ -141,6 +141,40 @@ import {
 const CLE_STOCKAGE_ETAT = 'klasik_etat_erp_v4';
 const CLE_STOCKAGE_SESSION = 'klasik_session_v4';
 const SOURCE_API = import.meta.env.PROD || import.meta.env.VITE_SOURCE_DONNEES === 'api';
+
+function obtenir_message_erreur_google(erreur: unknown): string {
+  const code =
+    typeof erreur === 'object' &&
+    erreur !== null &&
+    'code' in erreur &&
+    typeof erreur.code === 'string'
+      ? erreur.code
+      : '';
+  const messages: Record<string, string> = {
+    'auth/popup-blocked':
+      'Le navigateur a bloqué la fenêtre Google. Autorisez les fenêtres contextuelles pour ce site puis réessayez.',
+    'auth/popup-closed-by-user':
+      'La fenêtre de connexion Google a été fermée avant la validation.',
+    'auth/cancelled-popup-request':
+      'La fenêtre de connexion Google a été fermée avant la validation.',
+    'auth/operation-not-allowed':
+      'La connexion Google n’est pas activée dans Firebase Authentication.',
+    'auth/unauthorized-domain':
+      'Ce domaine n’est pas autorisé dans Firebase Authentication.',
+    'auth/network-request-failed':
+      'La connexion Google a échoué. Vérifiez votre connexion internet puis réessayez.',
+    'auth/invalid-api-key':
+      'La configuration Firebase est invalide. Contactez l’administrateur.',
+  };
+  if (messages[code]) return messages[code];
+  if (code.startsWith('auth/')) {
+    return 'La connexion Google a échoué. Vérifiez la configuration ou réessayez.';
+  }
+  return erreur instanceof Error
+    ? erreur.message
+    : 'Impossible de finaliser la connexion Google.';
+}
+
 const UTILISATEUR_ANONYME: CompteUtilisateur = {
   id: '',
   nom_complet: '',
@@ -1403,8 +1437,10 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const etablissements_affilies = useMemo(
     () =>
-      etat.etablissements.filter((e) =>
-        utilisateur_actif.affiliations.some((a) => a.id_etablissement === e.id)
+      etat.etablissements.filter(
+        (e) =>
+          (!SOURCE_API || e.statut === 'ACTIF') &&
+          utilisateur_actif.affiliations.some((a) => a.id_etablissement === e.id)
       ),
     [etat.etablissements, utilisateur_actif]
   );
@@ -1741,10 +1777,13 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       const est_autorise = utilisateur_actif.affiliations.some(
         (a) => a.id_etablissement === id_etablissement
       );
-      if (!est_autorise) {
+      if (!est_autorise || (SOURCE_API && cible.statut !== 'ACTIF')) {
         ajouter_toast({
           titre: 'Accès refusé',
-          description: 'Vous ne disposez pas de droits sur cet établissement.',
+          description:
+            SOURCE_API && cible.statut !== 'ACTIF'
+              ? 'Cet établissement est suspendu et ne peut pas être ouvert.'
+              : 'Vous ne disposez pas de droits sur cet établissement.',
           variante: 'error',
         });
         return;
@@ -2729,11 +2768,13 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       const etablissements_api = profil.est_super_admin_plateforme
         ? etablissements_plateforme_api
         : etablissements_affilies_api;
-      const etablissements_accessibles = etablissements_affilies_api.filter((etablissement) =>
-        profil.affiliations.some(
-          (affiliation) => affiliation.id_etablissement === etablissement.id
-        )
-      );
+      const etablissements_accessibles = etablissements_affilies_api
+        .filter((etablissement) => etablissement.statut === 'ACTIF')
+        .filter((etablissement) =>
+          profil.affiliations.some(
+            (affiliation) => affiliation.id_etablissement === etablissement.id
+          )
+        );
       const etablissement_api =
         etablissements_accessibles.find(
           (etablissement) => etablissement.id === id_etablissement_prefere
@@ -2780,6 +2821,13 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
             variante: 'success',
           });
           return { ok: true };
+        }
+        if (profil.affiliations.length > 0) {
+          return {
+            ok: false,
+            erreur:
+              'Tous les établissements associés à ce compte sont suspendus. Contactez un administrateur.',
+          };
         }
         const nouvel_etat: EtatPersiste = {
           ...etat,
@@ -3133,6 +3181,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         const identite_google = await connecter_avec_popup_google_api();
         await connecterGoogleApi(identite_google.id_token);
         const resultat = await ouvrir_session_api();
+        if (!resultat.ok) await deconnecterApi();
         await deconnecter_firebase();
         return {
           ok: resultat.ok,
@@ -3143,10 +3192,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         await deconnecter_firebase();
         return {
           ok: false,
-          erreur:
-            erreur instanceof Error
-              ? erreur.message
-              : 'Impossible de finaliser la connexion Google avec le serveur.',
+          erreur: obtenir_message_erreur_google(erreur),
         };
       }
     }
@@ -3236,24 +3282,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       });
       return { ok: true, besoin_etablissement: true };
     } catch (erreur: unknown) {
-      const code = (erreur as { code?: string })?.code ?? '';
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        return { ok: false, erreur: 'Fenêtre de connexion Google fermée avant validation.' };
-      }
-      if (code === 'auth/popup-blocked') {
-        return {
-          ok: false,
-          erreur:
-            'La fenêtre contextuelle Google a été bloquée par le navigateur. Autorisez les popups pour ce site.',
-        };
-      }
-      return {
-        ok: false,
-        erreur:
-          erreur instanceof Error
-            ? erreur.message
-            : 'Impossible de finaliser la connexion avec Google.',
-      };
+      return { ok: false, erreur: obtenir_message_erreur_google(erreur) };
     }
   }, [etat.utilisateurs, ouvrir_session_utilisateur_locale, ajouter_toast]);
 
@@ -3348,12 +3377,14 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         await connecterApi(identifiant, mot_de_passe);
         const resultat = await ouvrir_session_api();
-        return resultat.ok
-          ? resultat
-          : {
-              ok: false,
-              erreur: resultat.erreur ?? 'Aucun établissement autorisé n’est associé à ce compte.',
-            };
+        if (!resultat.ok) {
+          await deconnecterApi();
+          return {
+            ok: false,
+            erreur: resultat.erreur ?? 'Aucun établissement autorisé n’est associé à ce compte.',
+          };
+        }
+        return resultat;
       } catch (erreur: unknown) {
         return {
           ok: false,

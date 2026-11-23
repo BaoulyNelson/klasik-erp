@@ -693,6 +693,14 @@ class ConnexionGoogleView(APIView):
                     raise
         if not utilisateur.is_active:
             raise PermissionDenied("Ce compte est désactivé. Contactez un administrateur.")
+        if (
+            not (utilisateur.est_super_admin_plateforme or utilisateur.is_superuser)
+            and utilisateur.affiliations.exists()
+            and not utilisateur.affiliations.filter(etablissement__est_actif=True).exists()
+        ):
+            raise PermissionDenied(
+                "Tous les établissements associés à ce compte sont suspendus."
+            )
         profil = dict(utilisateur.profil or {})
         sujet_lie = profil.get("google_sub")
         if sujet_lie and sujet_lie != sujet_google:

@@ -692,6 +692,104 @@ class TestsAuthentificationApi(TestCase):
         self.assertEqual(self.utilisateur.profil["google_sub"], "google-sub-existant")
         self.assertTrue(self.utilisateur.check_password("MotDePasseDeTest-2026"))
 
+    def test_connexion_google_refuse_un_compte_desactive(self):
+        self.utilisateur.is_active = False
+        self.utilisateur.save(update_fields=("is_active",))
+        with override_settings(DJANGO_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"):
+            with patch(
+                "google.oauth2.id_token.verify_oauth2_token",
+                return_value={
+                    "email": self.utilisateur.courriel,
+                    "email_verified": True,
+                    "sub": "google-sub-desactive",
+                },
+            ):
+                reponse = self.client.post(
+                    "/api/auth/google/",
+                    {"id_token": "jeton-google-valide"},
+                    format="json",
+                )
+
+        self.assertEqual(reponse.status_code, 403)
+        self.utilisateur.refresh_from_db()
+        self.assertNotIn("google_sub", self.utilisateur.profil)
+        self.assertNotIn("klasik_access", reponse.cookies)
+
+    def test_connexion_google_refuse_si_tous_les_etablissements_sont_suspendus(self):
+        etablissement = Etablissement.objects.create(
+            id="tenant-google-suspendu",
+            code="GOOGLE-SUSPENDU",
+            nom="Établissement suspendu",
+            type="SCOLAIRE",
+            est_actif=False,
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=etablissement,
+            role="ENSEIGNANT",
+        )
+        with override_settings(DJANGO_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"):
+            with patch(
+                "google.oauth2.id_token.verify_oauth2_token",
+                return_value={
+                    "email": self.utilisateur.courriel,
+                    "email_verified": True,
+                    "sub": "google-sub-suspendu",
+                },
+            ):
+                reponse = self.client.post(
+                    "/api/auth/google/",
+                    {"id_token": "jeton-google-valide"},
+                    format="json",
+                )
+
+        self.assertEqual(reponse.status_code, 403)
+        self.utilisateur.refresh_from_db()
+        self.assertNotIn("google_sub", self.utilisateur.profil)
+        self.assertNotIn("klasik_access", reponse.cookies)
+
+    def test_connexion_google_autorisee_si_au_moins_un_etablissement_est_actif(self):
+        etablissement_suspendu = Etablissement.objects.create(
+            id="tenant-google-suspendu-multi",
+            code="GOOGLE-SUSPENDU-MULTI",
+            nom="Établissement suspendu multi",
+            type="SCOLAIRE",
+            est_actif=False,
+        )
+        etablissement_actif = Etablissement.objects.create(
+            id="tenant-google-actif-multi",
+            code="GOOGLE-ACTIF-MULTI",
+            nom="Établissement actif multi",
+            type="SCOLAIRE",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=etablissement_suspendu,
+            role="ENSEIGNANT",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=etablissement_actif,
+            role="ENSEIGNANT",
+        )
+        with override_settings(DJANGO_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"):
+            with patch(
+                "google.oauth2.id_token.verify_oauth2_token",
+                return_value={
+                    "email": self.utilisateur.courriel,
+                    "email_verified": True,
+                    "sub": "google-sub-multi",
+                },
+            ):
+                reponse = self.client.post(
+                    "/api/auth/google/",
+                    {"id_token": "jeton-google-valide"},
+                    format="json",
+                )
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertIn("klasik_access", reponse.cookies)
+
     def test_connexion_google_refuse_compte_non_verifie_audience_absente_et_autre_sujet_lie(self):
         with override_settings(DJANGO_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"):
             with patch(
@@ -1178,6 +1276,29 @@ class TestsApiMultitenant(TestCase):
         self.assertEqual(modification.json()["ville"], "Cap-Haïtien")
         self.assertEqual(modification.json()["statut"], "SUSPENDU")
         self.assertEqual(modification_autre_tenant.status_code, 403)
+        donnees_suspendues = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/utilisateurs/"
+        )
+        self.assertEqual(donnees_suspendues.status_code, 403)
+        enseignant = Utilisateur.objects.create_user(
+            courriel="enseignant-suspendu@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Enseignant suspendu",
+            role="ENSEIGNANT",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=enseignant,
+            etablissement=self.etablissement,
+            role="ENSEIGNANT",
+        )
+        self.client.force_authenticate(enseignant)
+        modification_enseignant = self.client.patch(
+            f"/api/etablissements/{self.etablissement.id}/",
+            {"statut": "ACTIF"},
+            format="json",
+        )
+        self.assertEqual(modification_enseignant.status_code, 403)
+        self.client.force_authenticate(self.utilisateur)
         self.etablissement.refresh_from_db()
         self.assertEqual(self.etablissement.configuration["ville"], "Cap-Haïtien")
         self.assertFalse(self.etablissement.est_actif)
