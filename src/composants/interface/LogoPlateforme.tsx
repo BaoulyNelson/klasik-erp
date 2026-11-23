@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ConfigurationPlateforme } from '../../modeles/erp';
 
 interface ProprietesLogoPlateforme {
@@ -29,16 +29,23 @@ export const LogoPlateforme: React.FC<ProprietesLogoPlateforme> = ({
   taille = 'moyen',
 }) => {
   const classe_taille = CLASSE_TAILLE[taille];
+  const url_logo = configuration.url_logo?.trim() || '/logo.png';
+  const [logo_indisponible, definir_logo_indisponible] = useState(false);
 
-  if (configuration.url_logo) {
+  useEffect(() => {
+    definir_logo_indisponible(false);
+  }, [url_logo]);
+
+  if (!logo_indisponible) {
     return (
       <div
         className={`${classe_taille} overflow-hidden bg-white dark:bg-slate-900 ring-1 ring-slate-200 dark:ring-slate-700 flex items-center justify-center shrink-0`}
       >
         <img
-          src={configuration.url_logo}
+          src={url_logo}
           alt={configuration.nom_plateforme}
           className="w-full h-full object-contain"
+          onError={() => definir_logo_indisponible(true)}
         />
       </div>
     );

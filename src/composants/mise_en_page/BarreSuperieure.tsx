@@ -28,6 +28,7 @@ import { utiliserErp } from '../../contexte/ContexteErp';
 import { AvatarUtilisateur } from '../interface/AvatarUtilisateur';
 import { BadgeTypeEtablissement } from '../interface/BadgeTypeEtablissement';
 import { LogoEtablissement } from '../interface/LogoEtablissement';
+import { LogoPlateforme } from '../interface/LogoPlateforme';
 import { Modale } from '../interface/Modale';
 import { ModaleConfirmationAction } from '../interface/ModaleConfirmationAction';
 import { BoutonInstallationPwa, ControleSynchroHorsLigne } from '../pwa/ControlesPwa';
@@ -100,6 +101,7 @@ export const BarreSuperieure: React.FC = () => {
     elements_nav.find((element) => element.id === route_active)?.libelle ?? 'Tableau de bord';
   const libelle_nav_courant = trad.routes[route_active] ?? libelle_nav_defaut;
   const nb_non_lues = notifications.filter((notif) => !notif.lue).length;
+  const afficher_logo_plateforme = !etablissement_actif.id;
 
   return (
     <>
@@ -107,13 +109,17 @@ export const BarreSuperieure: React.FC = () => {
         {/* Zone gauche : Logo mobile / Réduction bureau + Fil d'Ariane */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="md:hidden shrink-0">
-            <LogoEtablissement
-              type={etablissement_actif.type}
-              code={etablissement_actif.code}
-              url_logo={etablissement_actif.url_logo}
-              nom={etablissement_actif.nom}
-              taille="petit"
-            />
+            {afficher_logo_plateforme ? (
+              <LogoPlateforme configuration={configuration_plateforme} taille="petit" />
+            ) : (
+              <LogoEtablissement
+                type={etablissement_actif.type}
+                code={etablissement_actif.code}
+                url_logo={etablissement_actif.url_logo}
+                nom={etablissement_actif.nom}
+                taille="petit"
+              />
+            )}
           </div>
 
           <button
