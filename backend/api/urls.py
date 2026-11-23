@@ -5,16 +5,28 @@ from api.views import ConfigurationPlateformeView
 from api.tenant_views import (
     CollectionTenantView,
     DetailEtablissementTenantView,
+    DetailEtablissementPlateformeView,
     DetailEnregistrementTenantView,
     DetailUtilisateurTenantView,
     JournalAuditTenantView,
     ListeEtablissementsView,
+    ListeEtablissementsPlateformeView,
     ListeUtilisateursTenantView,
     PermissionsRolesTenantView,
 )
 
 urlpatterns = [
     path("etablissements/", ListeEtablissementsView.as_view(), name="liste-etablissements"),
+    path(
+        "plateforme/etablissements/",
+        ListeEtablissementsPlateformeView.as_view(),
+        name="liste-etablissements-plateforme",
+    ),
+    path(
+        "plateforme/etablissements/<str:id_etablissement>/",
+        DetailEtablissementPlateformeView.as_view(),
+        name="detail-etablissement-plateforme",
+    ),
     path(
         "plateforme/configuration/",
         ConfigurationPlateformeView.as_view(),

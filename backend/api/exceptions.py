@@ -14,8 +14,11 @@ def gestionnaire_erreurs(exception, context):
     if reponse is None:
         return None
 
-    if isinstance(exception, (AuthenticationFailed, NotAuthenticated)):
-        message = "Authentification requise ou identifiants invalides."
+    if isinstance(exception, AuthenticationFailed):
+        message = "Identifiants incorrects."
+        details = None
+    elif isinstance(exception, NotAuthenticated):
+        message = "Authentification requise."
         details = None
     elif isinstance(exception, PermissionDenied):
         message = "Vous n’avez pas la permission d’effectuer cette action."

@@ -37,7 +37,7 @@ export const VueStages: React.FC = () => {
     a_permission,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const [id_apprenant_selectionne, definir_id_apprenant_selectionne] = useState(
     apprenants_etablissement[0]?.id ?? ''
   );

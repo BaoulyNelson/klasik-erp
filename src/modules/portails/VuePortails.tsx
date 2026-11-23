@@ -78,8 +78,9 @@ export const VuePortails: React.FC<ProprietesVuePortails> = ({ type_portail }) =
     definir_route_active,
     ajouter_toast,
   } = utiliserErp();
+  const api_actif = import.meta.env.PROD || import.meta.env.VITE_SOURCE_DONNEES === 'api';
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const profil_pays = PROFILS_PAYS[etablissement_actif.code_pays] ?? PROFILS_PAYS.INTL;
   const modes_paiement_pays = useMemo(
     () => obtenir_modes_paiement_pays(etablissement_actif.code_pays),
@@ -840,14 +841,20 @@ export const VuePortails: React.FC<ProprietesVuePortails> = ({ type_portail }) =
         </Carte>
       </div>
 
-      {/* Section inférieure : Paiement en ligne, Documents officiels & Annonces */}
+      {/* Section inférieure : déclaration de paiement, documents officiels & annonces */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
         <Carte className="space-y-3">
           <div className="flex items-center gap-2 text-sm font-bold pb-2 border-b border-slate-100 dark:border-slate-800">
             <Wallet className="w-4 h-4 text-slate-400" />
             <span>Déclarer un paiement ({profil_pays.nom})</span>
           </div>
-          {solde === 0 ? (
+          {api_actif ? (
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Aucun paiement en ligne n’est traité ici. Les modes et références ne servent qu’à
+              documenter un règlement manuel; la déclaration depuis le portail n’est pas encore
+              enregistrée par l’API. Contactez l’économat pour faire confirmer le versement.
+            </p>
+          ) : solde === 0 ? (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
               Compte à jour : aucun solde dû pour la période en cours.
             </p>
@@ -898,7 +905,7 @@ export const VuePortails: React.FC<ProprietesVuePortails> = ({ type_portail }) =
                 type="text"
                 value={reference_paiement}
                 onChange={(e) => definir_reference_paiement(e.target.value)}
-                placeholder="Référence transaction (Stripe, SEPA, Mobile Money...)"
+                placeholder="Référence du règlement déclaré"
                 className="w-full px-3 py-2 font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
               />
               <Bouton
@@ -1256,7 +1263,7 @@ export const VuePortails: React.FC<ProprietesVuePortails> = ({ type_portail }) =
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Mode de paiement</span>
+                  <span className="text-slate-500">Mode déclaré</span>
                   <span>{modale_ouverte.mode_paiement}</span>
                 </div>
                 <div className="flex justify-between">

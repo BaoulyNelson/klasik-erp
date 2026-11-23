@@ -11,6 +11,7 @@ from .models import (
     EmpruntBibliotheque,
     IncidentDiscipline,
     LivreBibliotheque,
+    PartenaireStage,
     PretMateriel,
     VisiteInfirmerie,
 )
@@ -20,6 +21,7 @@ from .serializers import (
     EmpruntBibliothequeSerializer,
     IncidentDisciplineSerializer,
     LivreBibliothequeSerializer,
+    PartenaireStageSerializer,
     PretMaterielSerializer,
     VisiteInfirmerieSerializer,
 )
@@ -49,12 +51,39 @@ class VueTenantViewSet(viewsets.ModelViewSet):
         self.verifier_permission(False)
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission(False)
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission(True)
         return super().create(request, *args, **kwargs)
 
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission(True)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission(True)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission(True)
+        return super().destroy(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(etablissement=self.etablissement_courant)
+
+
+class PartenaireStageViewSet(VueTenantViewSet):
+    queryset = PartenaireStage.objects.none()
+    serializer_class = PartenaireStageSerializer
+
+    def get_queryset(self):
+        return PartenaireStage.objects.filter(etablissement=self.etablissement_courant)
+
+    def get_permissions_config(self):
+        return ("stages:voir", "stages:gerer")
 
 
 class LivreViewSet(VueTenantViewSet):

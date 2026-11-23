@@ -25,7 +25,6 @@ import { TOUTES_LES_DEVISES } from '../../configuration/regions_devises';
 import { obtenir_elements_navigation } from '../../configuration/navigation';
 import { obtenir_libelle_role_etablissement, ROLES } from '../../configuration/roles_permissions';
 import { utiliserErp } from '../../contexte/ContexteErp';
-import { IdentifiantRole } from '../../modeles/erp';
 import { AvatarUtilisateur } from '../interface/AvatarUtilisateur';
 import { BadgeTypeEtablissement } from '../interface/BadgeTypeEtablissement';
 import { LogoEtablissement } from '../interface/LogoEtablissement';
@@ -53,7 +52,6 @@ export const BarreSuperieure: React.FC = () => {
     definir_palette_commandes_ouverte,
     definir_ecran_connexion_ouvert,
     definir_modale_nouvel_etablissement_ouverte,
-    simuler_role_etablissement,
     definir_mode_affichage,
     deconnecter,
     configuration_plateforme,
@@ -102,17 +100,6 @@ export const BarreSuperieure: React.FC = () => {
     elements_nav.find((element) => element.id === route_active)?.libelle ?? 'Tableau de bord';
   const libelle_nav_courant = trad.routes[route_active] ?? libelle_nav_defaut;
   const nb_non_lues = notifications.filter((notif) => !notif.lue).length;
-
-  const roles_disponibles: IdentifiantRole[] = (Object.keys(ROLES) as IdentifiantRole[]).filter(
-    (id_role) => {
-      if (id_role === 'SUPER_ADMIN' && !utilisateur_actif.est_super_admin_plateforme) return false;
-      const definition = ROLES[id_role];
-      return (
-        definition.types_applicables === 'TOUS' ||
-        definition.types_applicables.includes(etablissement_actif.type)
-      );
-    }
-  );
 
   return (
     <>
@@ -314,7 +301,7 @@ export const BarreSuperieure: React.FC = () => {
             <HelpCircle className="w-4 h-4" />
           </button>
 
-          {/* Menu Utilisateur & Simulateur rapide de rôle */}
+          {/* Menu utilisateur */}
           <div className="relative" ref={ref_profil}>
             <button
               type="button"
@@ -362,32 +349,6 @@ export const BarreSuperieure: React.FC = () => {
                     <UserCircle className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     <span>{trad.mon_profil}</span>
                   </button>
-                </div>
-
-                <div className="py-2 border-b border-slate-200 dark:border-slate-800">
-                  <div className="px-2.5 pb-1 text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-                    <UserCog className="w-3.5 h-3.5" />
-                    <span>{trad.simuler_role}</span>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto space-y-0.5 px-1">
-                    {roles_disponibles.map((id_role) => (
-                      <button
-                        key={id_role}
-                        type="button"
-                        onClick={() => {
-                          simuler_role_etablissement(id_role);
-                          definir_profil_ouvert(false);
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer ${
-                          id_role_actif === id_role
-                            ? 'bg-indigo-50 text-indigo-700 font-semibold dark:bg-indigo-950/60 dark:text-indigo-300'
-                            : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                        }`}
-                      >
-                        {obtenir_libelle_role_etablissement(id_role, etablissement_actif.type)}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <div className="pt-1.5 space-y-0.5">

@@ -102,11 +102,10 @@ export const VueCampusNumerique: React.FC = () => {
     evaluer_remise_devoir_lms,
     ajouter_commentaire_devoir_lms,
     a_permission,
-    simuler_role_etablissement,
     ajouter_toast,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const est_super_admin = id_role_actif === 'SUPER_ADMIN';
   const peut_gerer = a_permission('pedagogie:noter') && !est_super_admin;
   const est_vue_apprenant = id_role_actif === 'APPRENANT';
@@ -904,28 +903,6 @@ export const VueCampusNumerique: React.FC = () => {
               </p>
             </div>
           </div>
-          {utilisateur_actif.est_super_admin_plateforme && (
-            <div className="flex items-center gap-2 shrink-0">
-              <Bouton
-                variante="secondaire"
-                taille="sm"
-                onClick={() =>
-                  simuler_role_etablissement('ENSEIGNANT', { rester_sur_vue: true })
-                }
-              >
-                Simuler Enseignant
-              </Bouton>
-              <Bouton
-                variante="secondaire"
-                taille="sm"
-                onClick={() =>
-                  simuler_role_etablissement('APPRENANT', { rester_sur_vue: true })
-                }
-              >
-                Simuler Apprenant
-              </Bouton>
-            </div>
-          )}
         </div>
       )}
 

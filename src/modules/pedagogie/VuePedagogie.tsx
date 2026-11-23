@@ -41,11 +41,10 @@ export const VuePedagogie: React.FC = () => {
     modifier_entree_cahier_textes,
     supprimer_entree_cahier_textes,
     a_permission,
-    simuler_role_etablissement,
     emettre_document_officiel,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const peut_noter = a_permission('pedagogie:noter') && id_role_actif !== 'SUPER_ADMIN';
   const peut_faire_appel = a_permission('pedagogie:appel') && id_role_actif !== 'SUPER_ADMIN';
   const peut_verrouiller = a_permission('pedagogie:verrouiller') && id_role_actif !== 'SUPER_ADMIN';
@@ -259,28 +258,6 @@ export const VuePedagogie: React.FC = () => {
               </p>
             </div>
           </div>
-          {utilisateur_actif.est_super_admin_plateforme && id_role_actif === 'SUPER_ADMIN' && (
-            <div className="flex items-center gap-2 shrink-0">
-              <Bouton
-                variante="secondaire"
-                taille="sm"
-                onClick={() =>
-                  simuler_role_etablissement('ENSEIGNANT', { rester_sur_vue: true })
-                }
-              >
-                Simuler Enseignant
-              </Bouton>
-              <Bouton
-                variante="secondaire"
-                taille="sm"
-                onClick={() =>
-                  simuler_role_etablissement('DIR_ETUDES', { rester_sur_vue: true })
-                }
-              >
-                Simuler Dir. Études
-              </Bouton>
-            </div>
-          )}
         </div>
       )}
 

@@ -1,29 +1,33 @@
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from rest_framework_simplejwt.views import TokenBlacklistView, TokenRefreshView
-
 from api.views import (
     ChangerMotDePasseView,
+    CookieCsrfView,
+    ContactPublicView,
     ConnexionGoogleView,
     ConfirmerReinitialisationView,
     ConnexionDemoView,
     DemanderReinitialisationView,
     ObtenirJetonsVerrouilleView,
-    PhotoProfilView,
+    ProfilUtilisateurView,
     ProfilCourantView,
+    RafraichirJetonsCookieView,
+    RevoquerJetonsCookieView,
     SanteView,
 )
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/sante/", SanteView.as_view(), name="sante"),
+    path("api/auth/csrf/", CookieCsrfView.as_view(), name="csrf-cookie"),
+    path("api/contact/", ContactPublicView.as_view(), name="contact-public"),
     path("api/auth/token/", ObtenirJetonsVerrouilleView.as_view(), name="obtenir-jetons"),
-    path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="rafraichir-jeton"),
-    path("api/auth/token/blacklist/", TokenBlacklistView.as_view(), name="revoquer-jeton"),
+    path("api/auth/token/refresh/", RafraichirJetonsCookieView.as_view(), name="rafraichir-jeton"),
+    path("api/auth/logout/", RevoquerJetonsCookieView.as_view(), name="revoquer-jeton"),
     path("api/auth/demo/", ConnexionDemoView.as_view(), name="connexion-demo"),
     path("api/auth/me/", ProfilCourantView.as_view(), name="profil-courant"),
-    path("api/auth/profile/", PhotoProfilView.as_view(), name="photo-profil"),
+    path("api/auth/profile/", ProfilUtilisateurView.as_view(), name="profil-utilisateur"),
     path("api/auth/password/reset/", DemanderReinitialisationView.as_view(), name="demander-reinitialisation"),
     path("api/auth/password/reset/confirm/", ConfirmerReinitialisationView.as_view(), name="confirmer-reinitialisation"),
     path("api/auth/password/change/", ChangerMotDePasseView.as_view(), name="changer-mot-de-passe"),

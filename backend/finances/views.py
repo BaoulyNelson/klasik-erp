@@ -10,10 +10,11 @@ from etablissements.models import Etablissement
 from pedagogie.models import PersonnelEnseignant
 from scolarite.models import Apprenant
 
-from .models import AbonnementService, BulletinPaie, Depense, Paiement
+from .models import AbonnementService, BulletinPaie, DemandeConge, Depense, Paiement
 from .serializers import (
     AbonnementServiceSerializer,
     BulletinPaieSerializer,
+    DemandeCongeSerializer,
     DepenseSerializer,
     PaiementSerializer,
 )
@@ -58,6 +59,10 @@ class PaiementViewSet(VueTenantMixin, viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         self.verifier_permission("finances:voir")
         return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("finances:voir")
+        return super().retrieve(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
         self.verifier_permission("finances:encaisser")
@@ -106,6 +111,15 @@ class PaiementViewSet(VueTenantMixin, viewsets.ModelViewSet):
         )
         return Response(self.get_serializer(paiement).data)
 
+    def update(self, request, *args, **kwargs):
+        raise PermissionDenied("Un paiement enregistré ne peut pas être modifié; annulez-le et créez-en un nouveau.")
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        raise PermissionDenied("Un paiement enregistré ne peut pas être supprimé; annulez-le pour conserver l’historique.")
+
 
 class DepenseViewSet(VueTenantMixin, viewsets.ModelViewSet):
     queryset = Depense.objects.none()
@@ -121,12 +135,28 @@ class DepenseViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("finances:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("finances:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("finances:gerer")
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(etablissement=self.etablissement_courant)
         return Response(serializer.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("finances:gerer")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission("finances:gerer")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission("finances:gerer")
+        return super().destroy(request, *args, **kwargs)
 
 
 class BulletinPaieViewSet(VueTenantMixin, viewsets.ModelViewSet):
@@ -143,6 +173,10 @@ class BulletinPaieViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("rh:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("rh:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("rh:gerer")
         personnel = PersonnelEnseignant.objects.filter(
@@ -155,6 +189,18 @@ class BulletinPaieViewSet(VueTenantMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(etablissement=self.etablissement_courant, personnel=personnel)
         return Response(serializer.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("rh:gerer")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission("rh:gerer")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission("rh:gerer")
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="payer")
     def payer(self, request, *args, **kwargs):
@@ -182,6 +228,10 @@ class AbonnementServiceViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("services:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("services:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("services:gerer")
         apprenant = Apprenant.objects.filter(
@@ -194,3 +244,52 @@ class AbonnementServiceViewSet(VueTenantMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(etablissement=self.etablissement_courant, apprenant=apprenant)
         return Response(serializer.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("services:gerer")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission("services:gerer")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission("services:gerer")
+        return super().destroy(request, *args, **kwargs)
+
+
+class DemandeCongeViewSet(VueTenantMixin, viewsets.ModelViewSet):
+    queryset = DemandeConge.objects.none()
+    serializer_class = DemandeCongeSerializer
+    search_fields = ["id", "nom_personnel", "libelle_role", "type_conge"]
+    ordering_fields = ["id", "demande_le", "date_debut"]
+
+    def get_queryset(self):
+        return DemandeConge.objects.filter(etablissement=self.etablissement_courant)
+
+    def list(self, request, *args, **kwargs):
+        self.verifier_permission("rh:voir")
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("rh:voir")
+        return super().retrieve(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        self.verifier_permission("rh:gerer")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        demande = serializer.save(etablissement=self.etablissement_courant)
+        return Response(self.get_serializer(demande).data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("rh:gerer")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission("rh:gerer")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission("rh:gerer")
+        return super().destroy(request, *args, **kwargs)

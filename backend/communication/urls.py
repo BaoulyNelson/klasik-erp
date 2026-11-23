@@ -1,9 +1,26 @@
 from django.urls import path
 
-from .views import ArticleActualiteViewSet, MessageCommunicationViewSet, NotificationViewSet
+from .views import (
+    ArticleActualiteViewSet,
+    FilDiscussionDirecteViewSet,
+    MessageCommunicationViewSet,
+    NotificationViewSet,
+)
 
 
 urlpatterns = [
+    path(
+        "etablissements/<str:id_etablissement>/fils_discussion/",
+        FilDiscussionDirecteViewSet.as_view({"get": "list", "post": "create"}),
+        name="fils_discussion-list",
+    ),
+    path(
+        "etablissements/<str:id_etablissement>/fils_discussion/<str:pk>/",
+        FilDiscussionDirecteViewSet.as_view(
+            {"get": "retrieve", "patch": "partial_update", "put": "update", "delete": "destroy"}
+        ),
+        name="fils_discussion-detail",
+    ),
     path(
         "etablissements/<str:id_etablissement>/communications/",
         MessageCommunicationViewSet.as_view({"get": "list", "post": "create"}),

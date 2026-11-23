@@ -69,6 +69,13 @@ export default defineConfig(() => {
           if (fs.existsSync(distDir) && fs.existsSync(srcAssets)) {
             fs.cpSync(srcAssets, distAssets, {recursive: true, force: true});
           }
+          const assetDemoPublic = path.resolve(
+            distDir,
+            'assets/aistudio/formapro_code_complet_51efe1f1.txt'
+          );
+          if (fs.existsSync(assetDemoPublic)) {
+            fs.unlinkSync(assetDemoPublic);
+          }
         },
       },
     ],

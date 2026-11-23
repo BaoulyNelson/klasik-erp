@@ -132,7 +132,7 @@ PERMISSIONS_COLLECTIONS = {
     "articles_actualites": ("actualites:voir", "actualites:gerer"),
     "consentements_rgpd": ("rgpd:gerer", "rgpd:gerer"),
     "demandes_rgpd": ("rgpd:gerer", "rgpd:gerer"),
-    "fils_discussion": ("messagerie:utiliser", None),
+    "fils_discussion": ("messagerie:utiliser", "messagerie:utiliser"),
     "badges_attribues": ("badges:voir", "badges:gerer"),
     "journaux_importations": ("importations:gerer", "importations:gerer"),
     "demandes_conge": ("rh:voir", "rh:gerer"),
@@ -165,8 +165,10 @@ TYPES_ETABLISSEMENT_PAR_ROLE = {
 
 
 def role_utilisateur_etablissement(utilisateur, etablissement) -> str:
-    if utilisateur.est_super_admin_plateforme:
-        return RoleUtilisateur.SUPER_ADMIN
+    if etablissement is None:
+        if utilisateur.est_super_admin_plateforme or utilisateur.is_superuser:
+            return RoleUtilisateur.SUPER_ADMIN
+        raise PermissionDenied("Cette action est réservée à l’administration de la plateforme.")
     try:
         affiliation = AffiliationEtablissement.objects.select_related("etablissement").get(
             utilisateur=utilisateur,
@@ -174,6 +176,8 @@ def role_utilisateur_etablissement(utilisateur, etablissement) -> str:
         )
     except AffiliationEtablissement.DoesNotExist as erreur:
         raise PermissionDenied("Vous n’êtes pas affilié à cet établissement.") from erreur
+    if affiliation.role == RoleUtilisateur.SUPER_ADMIN:
+        raise PermissionDenied("Le rôle plateforme ne peut pas être utilisé comme rôle tenant.")
     types_autorises = TYPES_ETABLISSEMENT_PAR_ROLE.get(affiliation.role)
     if types_autorises and etablissement.type not in types_autorises:
         raise PermissionDenied("Ce rôle n’est pas applicable à ce type d’établissement.")

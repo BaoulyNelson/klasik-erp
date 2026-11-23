@@ -93,7 +93,7 @@ export const VueBibliothequeMateriels: React.FC = () => {
     retourner_materiel,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const peut_gerer = a_permission('bibliotheque_materiels:gerer') && id_role_actif !== 'SUPER_ADMIN';
   const aujourdhui = new Date().toISOString().slice(0, 10);
 

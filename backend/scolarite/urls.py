@@ -48,4 +48,9 @@ urlpatterns = [
         InscriptionViewSet.as_view({"post": "annuler"}),
         name="inscriptions-annuler",
     ),
+    path(
+        "etablissements/<str:id_etablissement>/inscriptions/<str:pk>/archiver/",
+        InscriptionViewSet.as_view({"post": "archiver"}),
+        name="inscriptions-archiver",
+    ),
 ]

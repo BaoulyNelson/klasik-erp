@@ -45,7 +45,7 @@ export const VueCommunication: React.FC = () => {
     a_permission,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const profil_pays = PROFILS_PAYS[etablissement_actif.code_pays] ?? PROFILS_PAYS.HT;
   const [titre, definir_titre] = useState(MODELES_MESSAGES[0].titre);
   const [contenu, definir_contenu] = useState(MODELES_MESSAGES[0].contenu);

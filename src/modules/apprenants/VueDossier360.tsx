@@ -130,7 +130,7 @@ export const VueDossier360: React.FC<ProprietesVueDossier360> = ({ id_apprenant 
     'Carte bancaire (Stripe/Visa)';
 
   const apprenant = apprenants_etablissement.find((a) => a.id === id_apprenant);
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
 
   const inscription_active = useMemo(() => {
     if (!apprenant) return undefined;

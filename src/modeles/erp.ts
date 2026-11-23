@@ -1,6 +1,26 @@
 // Modèles et types fondamentaux de l'ERP éducatif SaaS multi-établissements
 
 export type TypeEtablissement = 'PRO' | 'SCOLAIRE' | 'UNIVERSITE';
+export type CouleurAccentEtablissement =
+  | 'blue'
+  | 'teal'
+  | 'violet'
+  | 'orange'
+  | 'red'
+  | 'navy';
+
+export const PALETTES_COULEUR_ETABLISSEMENT: {
+  valeur: CouleurAccentEtablissement;
+  libelle: string;
+  hex: string;
+}[] = [
+  { valeur: 'blue', libelle: 'Bleu', hex: '#2563eb' },
+  { valeur: 'teal', libelle: 'Turquoise', hex: '#0f9f8f' },
+  { valeur: 'violet', libelle: 'Violet', hex: '#7c3aed' },
+  { valeur: 'orange', libelle: 'Orange', hex: '#ea580c' },
+  { valeur: 'red', libelle: 'Rouge', hex: '#dc2626' },
+  { valeur: 'navy', libelle: 'Bleu nuit', hex: '#1e3a8a' },
+];
 
 export type CodeDevise =
   | 'USD'
@@ -183,7 +203,7 @@ export interface ConfigurationEtablissement {
   format_matricule: string; // ex: "EPM-{ANNEE}-{SEQ}"
   echelle_notation: 10 | 20 | 100;
   note_passage: number;
-  couleur_accent: 'amber' | 'blue' | 'violet';
+  couleur_accent: CouleurAccentEtablissement;
   devise_etablissement: string;
   url_logo?: string;
   titre_direction: string;
@@ -203,6 +223,28 @@ export interface ConfigurationEtablissement {
   bloquer_documents_si_impaye: boolean;
   statut?: 'ACTIF' | 'SUSPENDU';
   comptes_bancaires?: CompteBancaire[];
+  proprietaire_nom?: string;
+  proprietaire_courriel?: string;
+  proprietaire_telephone?: string;
+  administrateurs_affilies?: {
+    nom: string;
+    courriel: string;
+    role: 'DIRECTEUR' | 'ADMIN_ETAB';
+  }[];
+  cree_le?: string;
+  nombre_apprenants?: number;
+  nombre_apprenants_total?: number;
+  historique_forfaits_saas?: HistoriqueAbonnementSaas[];
+}
+
+export interface HistoriqueAbonnementSaas {
+  id: number;
+  offre_saas: ConfigurationEtablissement['offre_saas'];
+  statut_abonnement_saas: ConfigurationEtablissement['statut_abonnement_saas'] | '';
+  date_fin_essai_saas: string;
+  reference_paiement_saas: string;
+  cree_le: string;
+  modifie_par: string;
 }
 
 export interface AffiliationEtablissement {

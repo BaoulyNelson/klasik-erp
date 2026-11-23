@@ -147,4 +147,44 @@ class AbonnementService(models.Model):
     class Meta:
         ordering = ["type_service", "id"]
 
+
+class DemandeConge(models.Model):
+    id = models.CharField(max_length=128, primary_key=True)
+    etablissement = models.ForeignKey(
+        "etablissements.Etablissement",
+        on_delete=models.CASCADE,
+        db_column="id_etablissement",
+        related_name="demandes_conge",
+    )
+    nom_personnel = models.CharField(max_length=191)
+    libelle_role = models.CharField(max_length=191)
+    type_conge = models.CharField(
+        max_length=64,
+        choices=[
+            ("Congé annuel", "Congé annuel"),
+            ("Congé maladie", "Congé maladie"),
+            ("Permission exceptionnelle", "Permission exceptionnelle"),
+            ("Maternité / Paternité", "Maternité / Paternité"),
+            ("Formation continue", "Formation continue"),
+        ],
+    )
+    date_debut = models.CharField(max_length=32)
+    date_fin = models.CharField(max_length=32)
+    motif = models.TextField()
+    statut = models.CharField(
+        max_length=16,
+        choices=[
+            ("EN_ATTENTE", "En attente"),
+            ("APPROUVE", "Approuvé"),
+            ("REFUSE", "Refusé"),
+        ],
+        default="EN_ATTENTE",
+    )
+    demande_le = models.CharField(max_length=32)
+    traite_par = models.CharField(max_length=191, blank=True, default="")
+
+    class Meta:
+        ordering = ["-demande_le", "id"]
+
+
 # Create your models here.

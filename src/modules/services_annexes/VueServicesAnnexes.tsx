@@ -46,7 +46,7 @@ export const VueServicesAnnexes: React.FC = () => {
     definir_route_active,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const [onglet, definir_onglet] = useState<
     'bibliotheque' | 'cantine' | 'infirmerie' | 'discipline' | 'inventaire' | 'anciens'
   >(etablissement_actif.services_actifs.bibliotheque ? 'bibliotheque' : 'infirmerie');

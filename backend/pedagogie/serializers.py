@@ -1,5 +1,8 @@
 from rest_framework import serializers
 
+from etablissements.models import Etablissement
+from scolarite.models import ElementPedagogique, UniteAcademique
+
 from .models import (
     CreneauEmploiDuTemps,
     EntreeCahierTextes,
@@ -36,6 +39,63 @@ class PersonnelEnseignantSerializer(serializers.ModelSerializer):
             "heures_mensuelles",
             "taux_horaire_ou_mensuel_htg",
         ]
+
+    def validate(self, attrs):
+        vue = self.context.get("view")
+        etablissement = getattr(vue, "etablissement_courant", None)
+        if not isinstance(etablissement, Etablissement):
+            return attrs
+
+        ids_unites = attrs.get(
+            "ids_unites_assignees",
+            self.instance.ids_unites_assignees if self.instance else [],
+        )
+        ids_elements = attrs.get(
+            "ids_elements_assignes",
+            self.instance.ids_elements_assignes if self.instance else [],
+        )
+        for champ, identifiants in (
+            ("ids_unites_assignees", ids_unites),
+            ("ids_elements_assignes", ids_elements),
+        ):
+            if not isinstance(identifiants, list) or any(
+                not isinstance(identifiant, str) or not identifiant
+                for identifiant in identifiants
+            ):
+                raise serializers.ValidationError(
+                    {champ: "Les affectations doivent être une liste d’identifiants valides."}
+                )
+            if len(identifiants) != len(set(identifiants)):
+                raise serializers.ValidationError(
+                    {champ: "Une affectation ne peut pas être répétée."}
+                )
+
+        unites_valides = set(
+            UniteAcademique.objects.filter(
+                etablissement=etablissement,
+                pk__in=ids_unites,
+            ).values_list("pk", flat=True)
+        )
+        if unites_valides != set(ids_unites):
+            raise serializers.ValidationError(
+                {"ids_unites_assignees": "Une unité affectée n’appartient pas à cet établissement."}
+            )
+
+        elements = ElementPedagogique.objects.filter(
+            etablissement=etablissement,
+            pk__in=ids_elements,
+        ).values_list("pk", "unite_id")
+        elements_par_id = dict(elements)
+        if set(elements_par_id) != set(ids_elements):
+            raise serializers.ValidationError(
+                {"ids_elements_assignes": "Un élément affecté n’appartient pas à cet établissement."}
+            )
+        unites_elements = {id_unite for id_unite in elements_par_id.values()}
+        if not unites_elements.issubset(unites_valides):
+            raise serializers.ValidationError(
+                {"ids_unites_assignees": "Chaque unité des éléments affectés doit aussi être affectée."}
+            )
+        return attrs
 
     def to_representation(self, instance):
         donnees = super().to_representation(instance)

@@ -6,9 +6,28 @@ from .models import (
     EmpruntBibliotheque,
     IncidentDiscipline,
     LivreBibliotheque,
+    PartenaireStage,
     PretMateriel,
     VisiteInfirmerie,
 )
+
+
+class PartenaireStageSerializer(serializers.ModelSerializer):
+    id_etablissement = serializers.CharField(source="etablissement_id", read_only=True)
+
+    class Meta:
+        model = PartenaireStage
+        fields = [
+            "id",
+            "id_etablissement",
+            "nom_entreprise",
+            "secteur",
+            "ville",
+            "nom_tuteur",
+            "telephone",
+            "places_disponibles",
+            "stagiaires_actifs",
+        ]
 
 
 class LivreBibliothequeSerializer(serializers.ModelSerializer):

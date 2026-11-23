@@ -96,4 +96,25 @@ class AncienEtudiant(models.Model):
     ville = models.CharField(max_length=191)
     telephone = models.CharField(max_length=64)
 
+
+class PartenaireStage(models.Model):
+    id = models.CharField(max_length=128, primary_key=True)
+    etablissement = models.ForeignKey(
+        "etablissements.Etablissement",
+        on_delete=models.CASCADE,
+        db_column="id_etablissement",
+        related_name="partenaires_stage",
+    )
+    nom_entreprise = models.CharField(max_length=191)
+    secteur = models.CharField(max_length=191)
+    ville = models.CharField(max_length=191)
+    nom_tuteur = models.CharField(max_length=191)
+    telephone = models.CharField(max_length=64)
+    places_disponibles = models.PositiveIntegerField(default=0)
+    stagiaires_actifs = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["nom_entreprise", "id"]
+
+
 # Create your models here.

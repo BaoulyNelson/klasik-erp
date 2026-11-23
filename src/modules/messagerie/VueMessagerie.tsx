@@ -17,7 +17,7 @@ export const VueMessagerie: React.FC = () => {
     marquer_fil_lu,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const [id_fil_selectionne, definir_id_fil_selectionne] = useState<string | null>(
     fils_discussion_etablissement[0]?.id ?? null
   );

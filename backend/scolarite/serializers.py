@@ -18,6 +18,18 @@ def decimal_entier(valeur):
 
 class UniteAcademiqueSerializer(serializers.ModelSerializer):
     id_etablissement = serializers.CharField(source="etablissement_id", read_only=True)
+    frais_scolarite_htg = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=0,
+        required=False,
+    )
+    frais_inscription_htg = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=0,
+        required=False,
+    )
 
     class Meta:
         model = UniteAcademique
@@ -62,6 +74,21 @@ class ElementPedagogiqueSerializer(serializers.ModelSerializer):
             "id_enseignant",
             "libelle_periode",
         ]
+
+    def validate_id_enseignant(self, id_enseignant):
+        vue = self.context.get("view")
+        etablissement = getattr(vue, "etablissement_courant", None)
+        if id_enseignant and etablissement is not None:
+            from pedagogie.models import PersonnelEnseignant
+
+            if not PersonnelEnseignant.objects.filter(
+                etablissement=etablissement,
+                pk=id_enseignant,
+            ).exists():
+                raise serializers.ValidationError(
+                    "Cet enseignant n’appartient pas à l’établissement."
+                )
+        return id_enseignant
 
     def to_representation(self, instance):
         donnees = super().to_representation(instance)
@@ -191,6 +218,55 @@ class InscriptionApprenantSerializer(serializers.ModelSerializer):
             "cree_le",
             "modifie_le",
         ]
+
+    def validate(self, attrs):
+        instance = self.instance
+        statut_inscription = attrs.get(
+            "statut_inscription",
+            instance.statut_inscription if instance else "VALIDEE",
+        )
+        if statut_inscription not in {"VALIDEE", "ANNULEE", "ARCHIVEE"}:
+            raise serializers.ValidationError(
+                {"statut_inscription": "Le statut d’inscription est invalide."}
+            )
+        if instance and statut_inscription != instance.statut_inscription:
+            if instance.statut_inscription != "VALIDEE" or statut_inscription not in {
+                "ANNULEE",
+                "ARCHIVEE",
+            }:
+                raise serializers.ValidationError(
+                    {"statut_inscription": "Cette transition de statut n’est pas autorisée."}
+                )
+            motif = attrs.get("motif_statut", "")
+            if not isinstance(motif, str) or not motif.strip():
+                raise serializers.ValidationError(
+                    {"motif_statut": "Un motif est obligatoire pour changer le statut."}
+                )
+        montant_brut = attrs.get(
+            "montant_brut_htg",
+            instance.montant_brut_htg if instance else 0,
+        )
+        pourcentage_bourse = attrs.get(
+            "pourcentage_bourse",
+            instance.pourcentage_bourse if instance else 0,
+        )
+        montant_net = attrs.get(
+            "montant_net_htg",
+            instance.montant_net_htg if instance else 0,
+        )
+        if montant_brut < 0:
+            raise serializers.ValidationError(
+                {"montant_brut_htg": "Le montant brut ne peut pas être négatif."}
+            )
+        if not 0 <= pourcentage_bourse <= 100:
+            raise serializers.ValidationError(
+                {"pourcentage_bourse": "Le pourcentage de bourse doit être compris entre 0 et 100."}
+            )
+        if montant_net < 0:
+            raise serializers.ValidationError(
+                {"montant_net_htg": "Le montant net ne peut pas être négatif."}
+            )
+        return attrs
 
     def to_representation(self, instance):
         donnees = super().to_representation(instance)

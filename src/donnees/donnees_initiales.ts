@@ -38,7 +38,7 @@ export const ETABLISSEMENTS_INITIAUX: ConfigurationEtablissement[] = [
     format_matricule: 'EPM-26-{SEQ}',
     echelle_notation: 100,
     note_passage: 70,
-    couleur_accent: 'amber',
+    couleur_accent: 'orange',
     devise_etablissement: 'Savoir-faire, Rigueur et Autonomie',
     titre_direction: 'Directeur du centre',
     nom_direction: 'Jean-Robert Pierre',
@@ -1220,7 +1220,7 @@ export const NOTIFICATIONS_INITIALES: NotificationSysteme[] = [
   },
 ];
 
-export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
+const UTILISATEURS_DEMO: CompteUtilisateur[] = [
   {
     id: 'usr-super',
     nom_complet: 'Tabitha Semaître',
@@ -1229,13 +1229,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     mot_de_passe_demo: '',
     initiales_avatar: 'TS',
     est_super_admin_plateforme: true,
-    affiliations: [
-      { id_etablissement: 't-pro-epm', id_role: 'SUPER_ADMIN', fonction_locale: 'Super-admin Plateforme' },
-      { id_etablissement: 't-sco-lauriers', id_role: 'SUPER_ADMIN', fonction_locale: 'Super-admin Plateforme' },
-      { id_etablissement: 't-uni-iut', id_role: 'SUPER_ADMIN', fonction_locale: 'Super-admin Plateforme' },
-      { id_etablissement: 't-uni-ispd', id_role: 'SUPER_ADMIN', fonction_locale: 'Super-admin Plateforme' },
-      { id_etablissement: 't-sco-horizon', id_role: 'SUPER_ADMIN', fonction_locale: 'Super-admin Plateforme' },
-    ],
+    affiliations: [],
   },
   {
     id: 'usr-dir-multi',
@@ -1399,3 +1393,7 @@ export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = [
     ],
   },
 ];
+
+export const UTILISATEURS_INITIAUX: CompteUtilisateur[] = import.meta.env.DEV
+  ? UTILISATEURS_DEMO
+  : [];

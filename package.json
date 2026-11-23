@@ -11,6 +11,7 @@
     "backend:seed": "python backend/manage.py seed_demo",
     "backend:test": "python backend/manage.py test api",
     "build": "vite build",
+    "test:public-build": "node scripts/test-public-build.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

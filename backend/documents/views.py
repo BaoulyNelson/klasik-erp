@@ -56,6 +56,10 @@ class DocumentOfficielViewSet(viewsets.ModelViewSet):
         self.verifier_permission("documents:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("documents:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("documents:emettre")
         apprenant = Apprenant.objects.filter(
@@ -81,6 +85,18 @@ class DocumentOfficielViewSet(viewsets.ModelViewSet):
             id_objet=document.id,
         )
         return Response(self.get_serializer(document).data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("documents:emettre")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission("documents:emettre")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission("documents:emettre")
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="emettre")
     def emettre(self, request, *args, **kwargs):

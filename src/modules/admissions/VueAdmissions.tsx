@@ -43,6 +43,10 @@ import {
   formater_montant,
 } from '../../services/service_donnees';
 import {
+  creer_cle_brouillon_admission,
+  effacer_brouillon_admission,
+} from '../../services/service_brouillons';
+import {
   obtenir_modes_paiement_pays,
   valider_courriel,
   valider_telephone_pays,
@@ -70,7 +74,7 @@ export const VueAdmissions: React.FC = () => {
     a_permission,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const profil_pays = PROFILS_PAYS[etablissement_actif.code_pays] ?? PROFILS_PAYS.INTL;
   const peut_gerer_admissions = a_permission('admissions:gerer');
 
@@ -80,7 +84,7 @@ export const VueAdmissions: React.FC = () => {
   const [etape, definir_etape] = useState(1);
 
   // Formulaire brouillon sauvegardé automatiquement
-  const cle_brouillon = `klasik_brouillon_admission_${etablissement_actif.id}`;
+  const cle_brouillon = creer_cle_brouillon_admission(etablissement_actif.id);
   const [prenom, definir_prenom] = useState('');
   const [nom, definir_nom] = useState('');
   const [sexe, definir_sexe] = useState<'F' | 'M'>('F');
@@ -332,6 +336,16 @@ export const VueAdmissions: React.FC = () => {
       (d) => !pieces_cochees.includes(d)
     );
     const paye = Math.min(synthese_financiere.net_a_payer, Math.max(0, montant_initial_htg));
+    if (paye > 0 && mode_paiement !== 'Espèces' && !reference_paiement.trim()) {
+      ajouter_toast({
+        titre: 'Référence de règlement requise',
+        description:
+          'Saisissez la référence du règlement déclaré. Aucune passerelle de paiement en ligne n’est connectée.',
+        variante: 'error',
+      });
+      definir_etape(5);
+      return;
+    }
     const statut_paiement: Apprenant['statut_paiement'] =
       paye >= synthese_financiere.net_a_payer
         ? 'A_JOUR'
@@ -427,7 +441,7 @@ export const VueAdmissions: React.FC = () => {
     );
     if (!ok) return;
 
-    localStorage.removeItem(cle_brouillon);
+    effacer_brouillon_admission(etablissement_actif.id);
     definir_apprenant_cree(nouvel_apprenant);
   };
 
@@ -1571,11 +1585,16 @@ export const VueAdmissions: React.FC = () => {
                       </label>
                       <input
                         type="text"
+                        required={mode_paiement !== 'Espèces'}
                         value={reference_paiement}
                         onChange={(e) => definir_reference_paiement(e.target.value)}
-                        placeholder="ex. STRIPE-992104 / REF-01"
+                        placeholder="Référence du règlement déclaré"
                         className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
                       />
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Enregistrement manuel avec référence; aucune passerelle en ligne n’est
+                        connectée.
+                      </p>
                     </div>
                   </div>
                 )}

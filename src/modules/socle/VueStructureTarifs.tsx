@@ -56,7 +56,7 @@ export const VueStructureTarifs: React.FC = () => {
     a_permission,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const peut_gerer = a_permission('parametres:gerer') || a_permission('pedagogie:noter');
   const [onglet, definir_onglet] = useState<'unites' | 'elements' | 'enseignants'>('unites');
   const [modale_pack_ouverte, definir_modale_pack_ouverte] = useState(false);

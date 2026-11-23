@@ -102,7 +102,7 @@ export const VueEmploisDuTemps: React.FC = () => {
     a_permission,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const profil_pays = PROFILS_PAYS[etablissement_actif.code_pays] ?? PROFILS_PAYS.HT;
   const peut_gerer = a_permission('emplois_du_temps:gerer') && id_role_actif !== 'SUPER_ADMIN';
 

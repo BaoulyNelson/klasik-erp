@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -76,5 +77,61 @@ class ArticleActualite(models.Model):
 
     class Meta:
         ordering = ["-publie_le", "id"]
+
+
+class FilDiscussionDirecte(models.Model):
+    id = models.CharField(max_length=128, primary_key=True)
+    etablissement = models.ForeignKey(
+        "etablissements.Etablissement",
+        on_delete=models.CASCADE,
+        db_column="id_etablissement",
+        related_name="fils_discussion",
+    )
+    sujet = models.CharField(max_length=255)
+    nom_interlocuteur = models.CharField(max_length=191)
+    role_interlocuteur = models.CharField(max_length=191)
+    categorie = models.CharField(
+        max_length=32,
+        choices=[
+            ("Parent / Tuteur", "Parent / Tuteur"),
+            ("Enseignant", "Enseignant"),
+            ("Apprenant", "Apprenant"),
+            ("Administration", "Administration"),
+        ],
+    )
+    messages_non_lus = models.PositiveIntegerField(default=0)
+    mis_a_jour_le = models.CharField(max_length=32)
+    participants = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="fils_discussion_directe",
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-mis_a_jour_le", "id"]
+        indexes = [
+            models.Index(
+                fields=("etablissement", "mis_a_jour_le"),
+                name="fil_disc_tenant_date_idx",
+            )
+        ]
+
+
+class MessageDirect(models.Model):
+    id = models.CharField(max_length=128, primary_key=True)
+    fil = models.ForeignKey(
+        FilDiscussionDirecte,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    ordre = models.PositiveIntegerField(default=0)
+    nom_expediteur = models.CharField(max_length=191)
+    role_expediteur = models.CharField(max_length=191)
+    contenu = models.TextField()
+    envoye_le = models.CharField(max_length=32)
+
+    class Meta:
+        ordering = ["ordre", "id"]
+
 
 # Create your models here.

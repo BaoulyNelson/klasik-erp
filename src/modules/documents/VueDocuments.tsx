@@ -29,7 +29,7 @@ export const VueDocuments: React.FC = () => {
     a_permission,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const est_profil_personnel = id_role_actif === 'APPRENANT' || id_role_actif === 'PARENT';
   const peut_emettre = a_permission('documents:emettre');
 

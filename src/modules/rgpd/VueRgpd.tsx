@@ -33,7 +33,7 @@ export const VueRgpd: React.FC = () => {
     ajouter_toast,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const [onglet_actif, definir_onglet_actif] = useState<'consentements' | 'demandes'>(
     'consentements'
   );

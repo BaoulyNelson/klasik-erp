@@ -26,7 +26,12 @@ class UniteAcademique(models.Model):
             models.UniqueConstraint(
                 fields=("etablissement", "code"),
                 name="unites_unique_code_tenant",
-            )
+            ),
+            models.CheckConstraint(
+                condition=models.Q(frais_scolarite_htg__gte=0)
+                & models.Q(frais_inscription_htg__gte=0),
+                name="unites_frais_non_negatifs",
+            ),
         ]
         indexes = [models.Index(fields=("etablissement", "code"), name="unites_tenant_code_idx")]
 

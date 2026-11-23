@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useEffect } from 'react';
 import { Ban, Clock, CreditCard, ShieldAlert } from 'lucide-react';
 import { PageAccueil } from './composants/accueil/PageAccueil';
 import { Bouton } from './composants/interface/Bouton';
@@ -112,10 +112,10 @@ const CoquilleEspaceTravail: React.FC = () => {
     utilisateur_actif,
     langue_active,
     route_active,
+    restauration_session_api_en_cours,
     a_permission,
     definir_route_active,
     definir_modale_nouvel_etablissement_ouverte,
-    simuler_role_etablissement,
     basculer_statut_etablissement,
     deconnecter,
   } = utiliserErp();
@@ -207,13 +207,6 @@ const CoquilleEspaceTravail: React.FC = () => {
                 écran.
               </p>
               <div className="flex flex-wrap gap-2 mt-4">
-                <Bouton
-                  variante="secondaire"
-                  taille="sm"
-                  onClick={() => simuler_role_etablissement('DIRECTEUR')}
-                >
-                  Revenir en vue Direction
-                </Bouton>
                 <Bouton
                   variante="fantome"
                   taille="sm"
@@ -363,7 +356,51 @@ const CoquilleEspaceTravail: React.FC = () => {
 };
 
 const RouteurPrincipal: React.FC = () => {
-  const { mode_affichage } = utiliserErp();
+  const {
+    mode_affichage,
+    est_authentifie,
+    utilisateur_actif,
+    restauration_session_api_en_cours,
+    definir_mode_affichage,
+    definir_ecran_connexion_ouvert,
+    definir_route_active,
+  } = utiliserErp();
+
+  useEffect(() => {
+    if (restauration_session_api_en_cours || window.location.pathname !== '/plateforme') return;
+
+    window.history.replaceState(null, '', '/');
+    if (est_authentifie && utilisateur_actif.est_super_admin_plateforme) {
+      definir_mode_affichage('espace_travail');
+      definir_route_active('plateforme');
+      return;
+    }
+
+    definir_route_active('tableau_de_bord');
+    definir_ecran_connexion_ouvert(true);
+  }, [
+    definir_ecran_connexion_ouvert,
+    definir_mode_affichage,
+    definir_route_active,
+    est_authentifie,
+    restauration_session_api_en_cours,
+    utilisateur_actif.est_super_admin_plateforme,
+  ]);
+
+  if (restauration_session_api_en_cours) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-600 dark:bg-slate-950 dark:text-slate-300"
+      >
+        <div className="flex items-center gap-3 text-sm">
+          <span className="h-5 w-5 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
+          <span>Vérification de votre session…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

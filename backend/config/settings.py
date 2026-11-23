@@ -2,12 +2,13 @@ import os
 import sys
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR.parent / ".env")
 
 
 def lire_booleen(nom: str, defaut: bool) -> bool:
@@ -27,7 +28,8 @@ SECRET_KEY = os.getenv(
 )
 DEBUG = lire_booleen("DJANGO_DEBUG", False)
 EN_EXECUTION_TEST = "test" in sys.argv
-DEMO_LOGIN_ENABLED = DEBUG and lire_booleen("DJANGO_DEMO_LOGIN_ENABLED", False)
+DEMO_PUBLIQUE_ACTIVE = DEBUG and lire_booleen("DEMO_PUBLIQUE_ACTIVE", False)
+DJANGO_GOOGLE_CLIENT_ID = os.getenv("DJANGO_GOOGLE_CLIENT_ID", "").strip()
 if not DEBUG and (
     "DJANGO_SECRET_KEY" not in os.environ
     or not SECRET_KEY
@@ -50,6 +52,15 @@ origines_cors = lire_liste(
     "DJANGO_CORS_ALLOWED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000",
 )
+DJANGO_FRONTEND_URL = os.getenv(
+    "DJANGO_FRONTEND_URL",
+    origines_cors[0] if origines_cors else "http://localhost:3000",
+).strip().rstrip("/")
+url_frontend = urlsplit(DJANGO_FRONTEND_URL)
+if url_frontend.scheme not in {"http", "https"} or not url_frontend.netloc:
+    raise ImproperlyConfigured("DJANGO_FRONTEND_URL doit être une URL HTTP(S) absolue.")
+if not DEBUG and not EN_EXECUTION_TEST and url_frontend.scheme != "https":
+    raise ImproperlyConfigured("DJANGO_FRONTEND_URL doit utiliser HTTPS en production.")
 if not DEBUG and not origines_cors:
     raise ImproperlyConfigured(
         "DJANGO_CORS_ALLOWED_ORIGINS ne peut pas être vide hors du mode développement."
@@ -62,6 +73,16 @@ CSRF_TRUSTED_ORIGINS = lire_liste(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000",
 )
+if DEBUG or EN_EXECUTION_TEST:
+    CSRF_TRUSTED_ORIGINS = list(
+        dict.fromkeys(
+            [
+                *CSRF_TRUSTED_ORIGINS,
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+            ]
+        )
+    )
 if not DEBUG and not EN_EXECUTION_TEST and not CSRF_TRUSTED_ORIGINS:
     raise ImproperlyConfigured(
         "DJANGO_CSRF_TRUSTED_ORIGINS ne peut pas être vide hors du mode développement."
@@ -165,6 +186,9 @@ else:
     }
 
 AUTH_USER_MODEL = "comptes.Utilisateur"
+JWT_ACCESS_COOKIE_NAME = "klasik_access"
+JWT_REFRESH_COOKIE_NAME = "klasik_refresh"
+JWT_REFRESH_COOKIE_PATH = "/api/auth/"
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -184,10 +208,11 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = origines_cors
+CORS_ALLOW_CREDENTIALS = True
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "api.authentication.AuthentificationJwtCookie",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -206,6 +231,8 @@ REST_FRAMEWORK = {
         "auth_login": "10/minute",
         "auth_demo": "10/minute",
         "auth_google": "10/minute",
+        "public_contact": "5/hour",
+        "tenant_creation": "3/hour",
         "password_reset": "3/hour",
         "password_reset_confirm": "5/hour",
     },
@@ -232,6 +259,8 @@ SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_SSL_REDIRECT = lire_booleen("DJANGO_SECURE_SSL_REDIRECT", not DEBUG)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
@@ -257,20 +286,21 @@ if not DEBUG and not EN_EXECUTION_TEST:
             "Les origines CSRF de production doivent utiliser HTTPS."
         )
 
-EMAIL_BACKEND = os.getenv(
-    "DJANGO_EMAIL_BACKEND",
-    "django.core.mail.backends.console.EmailBackend"
-    if DEBUG or EN_EXECUTION_TEST
-    else "django.core.mail.backends.smtp.EmailBackend",
-)
 EMAIL_HOST = os.getenv("DJANGO_EMAIL_HOST", "")
 EMAIL_PORT = int(os.getenv("DJANGO_EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.getenv("DJANGO_EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("DJANGO_EMAIL_HOST_PASSWORD", "")
+EMAIL_BACKEND = os.getenv(
+    "DJANGO_EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend"
+    if EN_EXECUTION_TEST or (DEBUG and not EMAIL_HOST)
+    else "django.core.mail.backends.smtp.EmailBackend",
+)
 EMAIL_USE_TLS = lire_booleen("DJANGO_EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = lire_booleen("DJANGO_EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("DJANGO_EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "noreply@localhost")
+DJANGO_SUPPORT_EMAIL = os.getenv("DJANGO_SUPPORT_EMAIL", DEFAULT_FROM_EMAIL)
 if (
     not DEBUG
     and not EN_EXECUTION_TEST

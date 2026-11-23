@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { History, ShieldCheck, UserCheck, Users } from 'lucide-react';
+import { History, ShieldCheck, Users } from 'lucide-react';
 import { Bouton } from '../../composants/interface/Bouton';
 import { Carte } from '../../composants/interface/Carte';
 import { obtenir_theme_etablissement } from '../../composants/interface/theme_etablissement';
@@ -17,7 +17,6 @@ export const VueAuditRoles: React.FC = () => {
     id_role_actif,
     obtenir_permissions_role,
     basculer_permission_role,
-    simuler_role_etablissement,
     journaux_audit,
     a_permission,
     utilisateurs,
@@ -27,7 +26,7 @@ export const VueAuditRoles: React.FC = () => {
   const [role_selectionne, definir_role_selectionne] = useState<IdentifiantRole>('SCOLARITE');
   const [recherche_audit, definir_recherche_audit] = useState('');
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const peut_modifier_roles = a_permission('roles:gerer');
 
   const roles_applicables = (Object.keys(ROLES) as IdentifiantRole[]).filter((r) => {
@@ -178,20 +177,6 @@ export const VueAuditRoles: React.FC = () => {
                   {ROLES[role_selectionne].description}
                 </p>
               </div>
-              <Bouton
-                variante="principal"
-                taille="sm"
-                classe_accent={theme.bouton_principal}
-                disabled={id_role_actif === role_selectionne}
-                onClick={() => simuler_role_etablissement(role_selectionne)}
-              >
-                <UserCheck className="w-4 h-4" />
-                <span>
-                  {id_role_actif === role_selectionne
-                    ? 'Rôle actuellement simulé'
-                    : 'Simuler ce rôle'}
-                </span>
-              </Bouton>
             </div>
 
             {role_selectionne === 'SUPER_ADMIN' && (

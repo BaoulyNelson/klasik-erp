@@ -17,8 +17,10 @@ import { utiliserErp } from '../../contexte/ContexteErp';
 import {
   CodeDevise,
   CodePays,
+  CouleurAccentEtablissement,
   ConfigurationEtablissement,
   ElementPedagogique,
+  PALETTES_COULEUR_ETABLISSEMENT,
   TypeEtablissement,
   UniteAcademique,
 } from '../../modeles/erp';
@@ -58,6 +60,8 @@ export const ModaleNouvelEtablissement: React.FC = () => {
 
   const [etape, definir_etape] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const [type, definir_type] = useState<TypeEtablissement>('SCOLAIRE');
+  const [couleur_accent, definir_couleur_accent] =
+    useState<CouleurAccentEtablissement>('blue');
   const [code_pays, definir_code_pays] = useState<CodePays>(pays_initial);
   const [nom_pays_personnalise, definir_nom_pays_personnalise] = useState('');
   const [indicatif_personnalise, definir_indicatif_personnalise] = useState(
@@ -90,6 +94,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
   );
   const [reference_paiement_saas, definir_reference_paiement_saas] = useState('');
   const [url_logo, definir_url_logo] = useState<string | undefined>(undefined);
+  const [creation_en_cours, definir_creation_en_cours] = useState(false);
   const ref_champ_logo = useRef<HTMLInputElement>(null);
   const ref_utilisateur_prerempli = useRef<string | null>(null);
 
@@ -106,7 +111,11 @@ export const ModaleNouvelEtablissement: React.FC = () => {
     const cle_utilisateur = est_authentifie ? utilisateur_actif.id : '__ANONYME__';
     const changement_compte = ref_utilisateur_prerempli.current !== cle_utilisateur;
 
-    if (est_authentifie && utilisateur_actif.nom_complet.trim()) {
+    if (
+      est_authentifie &&
+      !utilisateur_actif.est_super_admin_plateforme &&
+      utilisateur_actif.nom_complet.trim()
+    ) {
       definir_nom_direction((precedent) =>
         changement_compte || !precedent.trim() ? utilisateur_actif.nom_complet : precedent
       );
@@ -127,6 +136,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
     utilisateur_actif.id,
     utilisateur_actif.courriel,
     utilisateur_actif.nom_complet,
+    utilisateur_actif.est_super_admin_plateforme,
   ]);
 
   const terminologie_apercu = obtenir_terminologie(type);
@@ -192,6 +202,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
 
   const gerer_selection_type = (t: TypeEtablissement) => {
     definir_type(t);
+    definir_couleur_accent(t === 'PRO' ? 'orange' : t === 'SCOLAIRE' ? 'blue' : 'violet');
     definir_echelle_notation(t === 'PRO' ? 100 : PROFILS_PAYS[code_pays].echelle_notation_defaut);
     if (t === 'PRO') {
       definir_libelle_periode('Session Octobre 2026');
@@ -232,7 +243,8 @@ export const ModaleNouvelEtablissement: React.FC = () => {
     }
   };
 
-  const gerer_creation = () => {
+  const gerer_creation = async () => {
+    if (creation_en_cours) return;
     if (!etape2_valide) {
       ajouter_toast({
         titre: !validation_telephone.valide
@@ -318,7 +330,7 @@ export const ModaleNouvelEtablissement: React.FC = () => {
       format_matricule: `${code_propre}-26-{SEQ}`,
       echelle_notation: echelle_finale,
       note_passage: type === 'PRO' ? 70 : note_passage_finale,
-      couleur_accent: type === 'PRO' ? 'amber' : type === 'SCOLAIRE' ? 'blue' : 'violet',
+      couleur_accent,
       devise_etablissement: 'Savoir, Rigueur et Ouverture Mondiale',
       url_logo,
       titre_direction:
@@ -387,26 +399,31 @@ export const ModaleNouvelEtablissement: React.FC = () => {
       libelle_periode,
     };
 
-    const ok = creer_etablissement_complet(
-      nouvel_etablissement,
-      demarrer_vierge ? [] : [nouvelle_unite],
-      demarrer_vierge ? [] : [nouvel_element],
-      {
-        nom_complet: nom_direction.trim(),
-        courriel: courriel_admin.trim(),
-        telephone: validation_telephone.numero_normalise,
-        mot_de_passe: mot_de_passe_admin.trim(),
-      }
-    );
-    if (!ok) return;
-    gerer_fermeture();
-    definir_nom('');
-    definir_code('');
-    definir_telephone_local('');
-    definir_nom_direction('');
-    definir_courriel_admin('');
-    definir_mot_de_passe_admin('');
-    definir_url_logo(undefined);
+    definir_creation_en_cours(true);
+    try {
+      const ok = await creer_etablissement_complet(
+        nouvel_etablissement,
+        demarrer_vierge ? [] : [nouvelle_unite],
+        demarrer_vierge ? [] : [nouvel_element],
+        {
+          nom_complet: nom_direction.trim(),
+          courriel: courriel_admin.trim(),
+          telephone: validation_telephone.numero_normalise,
+          mot_de_passe: mot_de_passe_admin.trim(),
+        }
+      );
+      if (!ok) return;
+      gerer_fermeture();
+      definir_nom('');
+      definir_code('');
+      definir_telephone_local('');
+      definir_nom_direction('');
+      definir_courriel_admin('');
+      definir_mot_de_passe_admin('');
+      definir_url_logo(undefined);
+    } finally {
+      definir_creation_en_cours(false);
+    }
   };
 
   return (
@@ -446,9 +463,17 @@ export const ModaleNouvelEtablissement: React.FC = () => {
               <ChevronRight className="w-4 h-4" />
             </Bouton>
           ) : (
-            <Bouton variante="principal" onClick={gerer_creation} disabled={!etape6_valide}>
+            <Bouton
+              variante="principal"
+              onClick={gerer_creation}
+              disabled={!etape6_valide || creation_en_cours}
+            >
               <Check className="w-4 h-4" />
-              <span>Créer et basculer vers cet établissement</span>
+              <span>
+                {utilisateur_actif.est_super_admin_plateforme
+                  ? 'Créer l’établissement client'
+                  : 'Créer et basculer vers cet établissement'}
+              </span>
             </Bouton>
           )}
         </>
@@ -479,7 +504,8 @@ export const ModaleNouvelEtablissement: React.FC = () => {
       </div>
 
       {etape === 1 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          <div className="space-y-3">
           {(['PRO', 'SCOLAIRE', 'UNIVERSITE'] as TypeEtablissement[]).map((type_cand) => {
             const dictionnaire = obtenir_terminologie(type_cand);
             const est_selectionne = type === type_cand;
@@ -510,6 +536,34 @@ export const ModaleNouvelEtablissement: React.FC = () => {
               </button>
             );
           })}
+          </div>
+          <fieldset>
+            <legend className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">
+              Couleur de l’établissement
+            </legend>
+            <div className="grid grid-cols-3 gap-2">
+              {PALETTES_COULEUR_ETABLISSEMENT.map((palette) => (
+                <button
+                  key={palette.valeur}
+                  type="button"
+                  aria-pressed={couleur_accent === palette.valeur}
+                  onClick={() => definir_couleur_accent(palette.valeur)}
+                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors ${
+                    couleur_accent === palette.valeur
+                      ? 'border-slate-500 bg-slate-50 dark:border-slate-400 dark:bg-slate-800'
+                      : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span
+                    className="h-4 w-4 rounded-full border border-black/10"
+                    style={{ backgroundColor: palette.hex }}
+                    aria-hidden="true"
+                  />
+                  {palette.libelle}
+                </button>
+              ))}
+            </div>
+          </fieldset>
         </div>
       )}
 
@@ -1033,9 +1087,15 @@ export const ModaleNouvelEtablissement: React.FC = () => {
         <div className="space-y-3 text-xs">
           {est_authentifie && (
             <div className="p-2.5 rounded-lg border border-indigo-200 bg-indigo-50/70 dark:border-indigo-900/60 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200 text-[11px]">
-              Pré-rempli avec votre profil connecté (<strong>{utilisateur_actif.nom_complet}</strong>
-              ). Vous pouvez modifier librement le nom ou le courriel si vous créez cet établissement
-              pour un autre responsable.
+              {utilisateur_actif.est_super_admin_plateforme ? (
+                'Renseignez le responsable de l’établissement client et créez son compte administrateur.'
+              ) : (
+                <>
+                  Pré-rempli avec votre profil connecté (
+                  <strong>{utilisateur_actif.nom_complet}</strong>). Vous pouvez modifier librement
+                  le nom ou le courriel si vous créez cet établissement pour un autre responsable.
+                </>
+              )}
             </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

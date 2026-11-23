@@ -30,13 +30,14 @@ const configuration_firebase_complete = Boolean(
   configurationFirebase.apiKey &&
     configurationFirebase.authDomain &&
     configurationFirebase.projectId &&
-    configurationFirebase.appId &&
-    import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID
+    configurationFirebase.appId
 );
+export const configuration_firebase_active = configuration_firebase_complete;
 const application_firebase = configuration_firebase_complete
   ? initializeApp(configurationFirebase)
   : null;
 export const base_firestore: Firestore | null = application_firebase
+  && import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID
   ? getFirestore(application_firebase, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID)
   : null;
 export const auth_firebase: Auth | null = application_firebase
@@ -53,6 +54,15 @@ function exiger_configuration_firebase(): {
     );
   }
   return { auth: auth_firebase, firestore: base_firestore };
+}
+
+function exiger_authentification_firebase(): Auth {
+  if (!auth_firebase) {
+    throw new Error(
+      'La connexion Google n’est pas configurée. Renseignez les paramètres d’authentification Firebase.'
+    );
+  }
+  return auth_firebase;
 }
 
 const fournisseur_google = new GoogleAuthProvider();
@@ -127,6 +137,40 @@ export interface IdentiteAuthentificationGoogle {
   courriel: string;
   nom_affiche: string;
   url_photo?: string;
+}
+
+export interface IdentiteGoogleApi {
+  id_token: string;
+  courriel: string;
+  nom_affiche: string;
+  url_photo?: string;
+}
+
+export async function connecter_avec_popup_google_api(): Promise<IdentiteGoogleApi> {
+  const resultat = await signInWithPopup(exiger_authentification_firebase(), fournisseur_google);
+  const utilisateur_google = resultat.user;
+  const identifiants = GoogleAuthProvider.credentialFromResult(resultat);
+  if (!identifiants?.idToken) {
+    throw new Error('Google n’a pas fourni de jeton d’identité vérifiable.');
+  }
+  if (!utilisateur_google.email) {
+    throw new Error('Aucune adresse courriel associée à ce compte Google.');
+  }
+  const nom_affiche = (
+    utilisateur_google.displayName ||
+    utilisateur_google.email.split('@')[0] ||
+    'Utilisateur'
+  ).slice(0, 120);
+  const url_photo =
+    utilisateur_google.photoURL && utilisateur_google.photoURL.length <= 1024
+      ? utilisateur_google.photoURL
+      : undefined;
+  return {
+    id_token: identifiants.idToken,
+    courriel: utilisateur_google.email,
+    nom_affiche,
+    url_photo,
+  };
 }
 
 export async function connecter_avec_popup_google(): Promise<IdentiteAuthentificationGoogle> {

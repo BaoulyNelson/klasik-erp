@@ -22,7 +22,7 @@
       "format_matricule": "EPM-26-{SEQ}",
       "echelle_notation": 100,
       "note_passage": 70,
-      "couleur_accent": "amber",
+      "couleur_accent": "orange",
       "devise_etablissement": "Savoir-faire, Rigueur et Autonomie",
       "titre_direction": "Directeur du centre",
       "nom_direction": "Jean-Robert Pierre",
@@ -194,33 +194,6 @@
       "telephone": "+509 3700-0001",
       "initiales_avatar": "TS",
       "est_super_admin_plateforme": true,
-      "affiliations": [
-        {
-          "id_etablissement": "t-pro-epm",
-          "id_role": "SUPER_ADMIN",
-          "fonction_locale": "Super-admin Plateforme"
-        },
-        {
-          "id_etablissement": "t-sco-lauriers",
-          "id_role": "SUPER_ADMIN",
-          "fonction_locale": "Super-admin Plateforme"
-        },
-        {
-          "id_etablissement": "t-uni-iut",
-          "id_role": "SUPER_ADMIN",
-          "fonction_locale": "Super-admin Plateforme"
-        },
-        {
-          "id_etablissement": "t-uni-ispd",
-          "id_role": "SUPER_ADMIN",
-          "fonction_locale": "Super-admin Plateforme"
-        },
-        {
-          "id_etablissement": "t-sco-horizon",
-          "id_role": "SUPER_ADMIN",
-          "fonction_locale": "Super-admin Plateforme"
-        }
-      ],
       "mot_de_passe_demo": ""
     },
     {

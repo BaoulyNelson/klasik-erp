@@ -84,7 +84,7 @@ const CARTE_ICONES: Record<ElementNavigation['nom_icone'], React.FC<{ className?
 
 export const BarreLaterale: React.FC = () => {
   const {
-    etablissements_accessibles,
+    etablissements_affilies,
     etablissement_actif,
     utilisateur_actif,
     id_role_actif,
@@ -116,7 +116,9 @@ export const BarreLaterale: React.FC = () => {
   }, []);
 
   const trad = DICTIONNAIRE_I18N[langue_active];
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const compte_plateforme_sans_affiliation =
+    utilisateur_actif.est_super_admin_plateforme && etablissements_affilies.length === 0;
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const elements_nav = obtenir_elements_navigation(etablissement_actif.type).filter((element) =>
     a_permission(element.permission_requise)
   );
@@ -162,26 +164,40 @@ export const BarreLaterale: React.FC = () => {
               barre_laterale_reduite ? 'justify-center' : ''
             }`}
           >
-            <LogoEtablissement
-              type={etablissement_actif.type}
-              code={etablissement_actif.code}
-              url_logo={etablissement_actif.url_logo}
-              nom={etablissement_actif.nom}
-              taille="petit"
-            />
+            {compte_plateforme_sans_affiliation ? (
+              <LogoPlateforme configuration={configuration_plateforme} taille="petit" />
+            ) : (
+              <LogoEtablissement
+                type={etablissement_actif.type}
+                code={etablissement_actif.code}
+                url_logo={etablissement_actif.url_logo}
+                nom={etablissement_actif.nom}
+                taille="petit"
+              />
+            )}
             {!barre_laterale_reduite && (
               <>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                      {etablissement_actif.nom_court}
+                      {compte_plateforme_sans_affiliation
+                        ? 'Console Plateforme'
+                        : etablissement_actif.nom_court}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <BadgeTypeEtablissement type={etablissement_actif.type} compact />
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                      {etablissement_actif.annee_academique}
-                    </span>
+                    {compte_plateforme_sans_affiliation ? (
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        Compte plateforme
+                      </span>
+                    ) : (
+                      <>
+                        <BadgeTypeEtablissement type={etablissement_actif.type} compact />
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {etablissement_actif.annee_academique}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <ChevronsUpDown className="w-4 h-4 text-slate-400 shrink-0" />
@@ -193,10 +209,10 @@ export const BarreLaterale: React.FC = () => {
           {selecteur_ouvert && (
             <div className="absolute left-0 top-full mt-1.5 w-76 z-50 rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 p-2">
               <div className="px-2 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500">
-                {trad.mes_etablissements} ({etablissements_accessibles.length})
+                {trad.mes_etablissements} ({etablissements_affilies.length})
               </div>
               <div className="space-y-1 max-h-72 overflow-y-auto">
-                {etablissements_accessibles.map((etab) => {
+                {etablissements_affilies.map((etab) => {
                   const est_actif = etab.id === etablissement_actif.id;
                   const affiliation = utilisateur_actif.affiliations.find(
                     (aff) => aff.id_etablissement === etab.id
@@ -250,6 +266,23 @@ export const BarreLaterale: React.FC = () => {
                     </button>
                   );
                 })}
+                {compte_plateforme_sans_affiliation && (
+                  <div className="px-2 py-2">
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                      Aucun établissement personnel — Compte Plateforme
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        gerer_navigation('plateforme');
+                        definir_selecteur_ouvert(false);
+                      }}
+                      className="mt-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 cursor-pointer"
+                    >
+                      Ouvrir la Console Plateforme
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800">

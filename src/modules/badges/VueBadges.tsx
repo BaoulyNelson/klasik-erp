@@ -31,7 +31,7 @@ export const VueBadges: React.FC = () => {
     a_permission,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const peut_gerer = a_permission('badges:gerer');
   const est_profil_personnel = id_role_actif === 'APPRENANT' || id_role_actif === 'PARENT';
 

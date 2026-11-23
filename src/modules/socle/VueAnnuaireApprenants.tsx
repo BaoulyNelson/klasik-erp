@@ -73,7 +73,7 @@ export const VueAnnuaireApprenants: React.FC = () => {
     `${profil_pays.indicatif_telephonique} `
   );
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
 
   const carte_unites = useMemo(() => {
     const dictionnaire = new Map<string, string>();

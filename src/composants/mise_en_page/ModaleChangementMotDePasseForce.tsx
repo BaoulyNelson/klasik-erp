@@ -17,24 +17,34 @@ export const ModaleChangementMotDePasseForce: React.FC = () => {
   const [nouveau_mot_de_passe, definir_nouveau_mot_de_passe] = useState('');
   const [confirmation_mot_de_passe, definir_confirmation_mot_de_passe] = useState('');
   const [erreur, definir_erreur] = useState<string | null>(null);
+  const [en_cours, definir_en_cours] = useState(false);
 
   const est_ouverte =
     mode_affichage === 'espace_travail' && utilisateur_actif.doit_changer_mot_de_passe === true;
 
-  const gerer_soumission = (evenement: React.FormEvent) => {
+  const gerer_soumission = async (evenement: React.FormEvent) => {
     evenement.preventDefault();
     if (nouveau_mot_de_passe !== confirmation_mot_de_passe) {
       definir_erreur('Les deux mots de passe saisis ne correspondent pas.');
       return;
     }
-    const resultat = finaliser_changement_mot_de_passe_obligatoire(nouveau_mot_de_passe);
-    if (!resultat.ok) {
-      definir_erreur(resultat.erreur ?? 'Mot de passe non valide.');
-      return;
+    definir_en_cours(true);
+    try {
+      const resultat = await finaliser_changement_mot_de_passe_obligatoire(nouveau_mot_de_passe);
+      if (!resultat.ok) {
+        definir_erreur(resultat.erreur ?? 'Mot de passe non valide.');
+        return;
+      }
+      definir_erreur(null);
+      definir_nouveau_mot_de_passe('');
+      definir_confirmation_mot_de_passe('');
+    } catch (erreur: unknown) {
+      definir_erreur(
+        erreur instanceof Error ? erreur.message : 'Le changement de mot de passe a échoué.'
+      );
+    } finally {
+      definir_en_cours(false);
     }
-    definir_erreur(null);
-    definir_nouveau_mot_de_passe('');
-    definir_confirmation_mot_de_passe('');
   };
 
   return (
@@ -100,9 +110,9 @@ export const ModaleChangementMotDePasseForce: React.FC = () => {
             <LogOut className="w-3.5 h-3.5" />
             <span>Se déconnecter</span>
           </Bouton>
-          <Bouton type="submit" variante="principal" taille="sm">
+          <Bouton type="submit" variante="principal" taille="sm" disabled={en_cours}>
             <Lock className="w-3.5 h-3.5" />
-            <span>Valider et accéder</span>
+            <span>{en_cours ? 'Enregistrement…' : 'Valider et accéder'}</span>
           </Bouton>
         </div>
       </form>

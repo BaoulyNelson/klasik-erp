@@ -57,7 +57,7 @@ export const VueFinances: React.FC = () => {
     ajouter_toast,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const profil_pays = PROFILS_PAYS[etablissement_actif.code_pays] ?? PROFILS_PAYS.INTL;
   const modes_paiement_pays = useMemo(
     () => obtenir_modes_paiement_pays(etablissement_actif.code_pays),
@@ -175,6 +175,14 @@ export const VueFinances: React.FC = () => {
   const gerer_encaissement = (evenement: React.FormEvent) => {
     evenement.preventDefault();
     if (!id_apprenant || montant_saisi <= 0) return;
+    if (mode_paiement !== 'Espèces' && !code_reference.trim()) {
+      ajouter_toast({
+        titre: 'Référence de règlement requise',
+        description: 'Saisissez la référence du règlement déclaré avant de générer le reçu.',
+        variante: 'error',
+      });
+      return;
+    }
     const recu = encaisser_paiement(
       id_apprenant,
       montant_pivot_courant,
@@ -238,11 +246,14 @@ export const VueFinances: React.FC = () => {
             Finances, Encaissements & Comptabilité
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Devise locale : {etablissement_actif.devise_defaut} ({etablissement_actif.nom_pays}) ·
-            Carte Stripe/Visa, Mobile Money (Orange/Wave/M-Pesa/MonCash), Virement SEPA/SWIFT,
-            Espèces.
+            Devise locale : {etablissement_actif.devise_defaut} ({etablissement_actif.nom_pays}).
+            Les modes listés enregistrent un règlement déclaré avec sa référence; aucune passerelle
+            en ligne n’est connectée.
           </p>
         </div>
+        <p className="text-[11px] text-slate-500">
+          Enregistrement manuel : aucune transaction en ligne n’a été effectuée.
+        </p>
 
         <div className="flex flex-wrap items-center gap-2">
           <Bouton variante="secondaire" taille="sm" onClick={gerer_export_csv}>
@@ -402,6 +413,7 @@ export const VueFinances: React.FC = () => {
                     </label>
                     <input
                       type="text"
+                      required
                       value={code_reference}
                       onChange={(e) => definir_code_reference(e.target.value)}
                       placeholder="ex. ch_Stripe994 / WAVE-2026 / IBAN-REF"
@@ -1122,6 +1134,9 @@ export const VueFinances: React.FC = () => {
                       </span>
                     </div>
                   </div>
+                  <div className="text-[9px] text-center text-slate-500 border-t border-dashed border-slate-400 pt-2">
+                    Enregistrement manuel : aucune transaction en ligne n’a été effectuée.
+                  </div>
 
                   <div className="flex flex-col items-center text-center gap-1.5 pt-1">
                     <CodeQrSvg valeur={donnees_qr} taille={76} />
@@ -1196,6 +1211,9 @@ export const VueFinances: React.FC = () => {
                       )}
                     </span>
                   </div>
+                  <p className="text-[11px] text-center text-slate-500">
+                    Enregistrement manuel : aucune transaction en ligne n’a été effectuée.
+                  </p>
 
                   <div className="flex justify-between text-[11px] text-slate-400 pt-2">
                     <span>Perçu par : {modale_recu.encaisse_par}</span>

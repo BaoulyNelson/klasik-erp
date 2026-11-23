@@ -43,7 +43,7 @@ export const VueComptes: React.FC = () => {
     definir_route_active,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
 
   const [nom_complet, definir_nom_complet] = useState('');
   const [courriel, definir_courriel] = useState('');

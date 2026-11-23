@@ -6,6 +6,7 @@ from .views import (
     EmpruntBibliothequeViewSet,
     IncidentDisciplineViewSet,
     LivreViewSet,
+    PartenaireStageViewSet,
     PretMaterielViewSet,
     VisiteInfirmerieViewSet,
 )
@@ -27,6 +28,7 @@ def ressources(prefix, viewset):
 
 
 urlpatterns = []
+urlpatterns += ressources("partenaires", PartenaireStageViewSet)
 urlpatterns += ressources("livres_bibliotheque", LivreViewSet)
 urlpatterns += ressources("emprunts_bibliotheque", EmpruntBibliothequeViewSet)
 urlpatterns += ressources("visites_infirmerie", VisiteInfirmerieViewSet)

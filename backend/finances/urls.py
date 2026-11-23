@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     AbonnementServiceViewSet,
     BulletinPaieViewSet,
+    DemandeCongeViewSet,
     DepenseViewSet,
     PaiementViewSet,
 )
@@ -28,6 +29,7 @@ urlpatterns += ressources("paiements", PaiementViewSet)
 urlpatterns += ressources("depenses", DepenseViewSet)
 urlpatterns += ressources("paie", BulletinPaieViewSet)
 urlpatterns += ressources("abonnements", AbonnementServiceViewSet)
+urlpatterns += ressources("demandes_conge", DemandeCongeViewSet)
 urlpatterns += [
     path(
         "etablissements/<str:id_etablissement>/paiements/<str:pk>/annuler/",

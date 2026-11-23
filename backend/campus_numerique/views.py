@@ -23,6 +23,16 @@ class VueTenantMixin:
         permissions=permissions_utilisateur(self.request.user,self.etablissement_courant)
         if permission not in permissions:
             raise PermissionDenied("Vous n’avez pas la permission d’effectuer cette action.")
+    def retrieve(self,request,*args,**kwargs):
+        self.verifier("campus_numerique:voir"); return super().retrieve(request,*args,**kwargs)
+    def create(self,request,*args,**kwargs):
+        self.verifier("pedagogie:noter"); return super().create(request,*args,**kwargs)
+    def update(self,request,*args,**kwargs):
+        self.verifier("pedagogie:noter"); return super().update(request,*args,**kwargs)
+    def partial_update(self,request,*args,**kwargs):
+        self.verifier("pedagogie:noter"); return super().partial_update(request,*args,**kwargs)
+    def destroy(self,request,*args,**kwargs):
+        self.verifier("pedagogie:noter"); return super().destroy(request,*args,**kwargs)
 
 
 class RessourceLmsViewSet(VueTenantMixin,viewsets.ModelViewSet):

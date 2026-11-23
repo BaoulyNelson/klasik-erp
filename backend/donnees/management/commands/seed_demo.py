@@ -6,7 +6,11 @@ from django.db import transaction
 
 from comptes.models import AffiliationEtablissement, RoleUtilisateur, Utilisateur
 from donnees.models import EnregistrementMetier
-from etablissements.models import Etablissement, TypeEtablissement
+from etablissements.models import (
+    Etablissement,
+    HistoriqueAbonnementSaas,
+    TypeEtablissement,
+)
 from etablissements.models import CompteBancaire
 from scolarite.models import (
     Apprenant,
@@ -25,9 +29,23 @@ from pedagogie.models import (
     Presence,
     Soutenance,
 )
-from finances.models import AbonnementService, BulletinPaie, Depense, Paiement
+from finances.models import (
+    AbonnementService,
+    BulletinPaie,
+    DemandeConge,
+    Depense,
+    Paiement,
+)
 from documents.models import DocumentOfficiel
-from communication.models import ArticleActualite, MessageCommunication, Notification
+from communication.models import (
+    ArticleActualite,
+    FilDiscussionDirecte,
+    MessageCommunication,
+    MessageDirect,
+    Notification,
+)
+from securite.models import AttributionBadge, LotImportation
+from services_annexes.models import PartenaireStage
 
 FICHIER_DONNEES = Path(__file__).resolve().parents[3] / "fixtures" / "donnees_demo.json"
 
@@ -114,6 +132,9 @@ class Command(BaseCommand):
             courriel = profil.get("courriel", "").strip().lower()
             if not courriel:
                 raise CommandError("Un compte de démonstration ne possède pas de courriel.")
+            if profil.get("est_super_admin_plateforme"):
+                profil["affiliations"] = []
+            profil["est_compte_demo"] = True
             profil["acces_demo_autorise"] = True
             role = (
                 RoleUtilisateur.SUPER_ADMIN
@@ -164,6 +185,49 @@ class Command(BaseCommand):
                         "role": affiliation["id_role"],
                         "fonction_locale": affiliation.get("fonction_locale", ""),
                     },
+                )
+            if profil.get("est_super_admin_plateforme"):
+                AffiliationEtablissement.objects.filter(utilisateur=utilisateur).delete()
+
+        for etablissement in etablissements.values():
+            responsables = list(
+                AffiliationEtablissement.objects.filter(
+                    etablissement=etablissement,
+                    role__in=(RoleUtilisateur.DIRECTEUR, RoleUtilisateur.ADMIN_ETAB),
+                )
+                .select_related("utilisateur")
+                .order_by("utilisateur__nom_complet")
+            )
+            responsables.sort(
+                key=lambda affiliation: (
+                    affiliation.role != RoleUtilisateur.DIRECTEUR,
+                    affiliation.utilisateur.nom_complet.casefold(),
+                )
+            )
+            if etablissement.proprietaire_id is None and responsables:
+                etablissement.proprietaire = responsables[0].utilisateur
+                etablissement.save(update_fields=("proprietaire",))
+
+            dernier_historique = etablissement.historique_abonnements_saas.first()
+            instantane_abonnement = (
+                etablissement.offre_saas,
+                etablissement.statut_abonnement_saas,
+                etablissement.date_fin_essai_saas,
+                etablissement.reference_paiement_saas,
+            )
+            if dernier_historique is None or instantane_abonnement != (
+                dernier_historique.offre_saas,
+                dernier_historique.statut_abonnement_saas,
+                dernier_historique.date_fin_essai_saas,
+                dernier_historique.reference_paiement_saas,
+            ):
+                HistoriqueAbonnementSaas.objects.create(
+                    etablissement=etablissement,
+                    offre_saas=etablissement.offre_saas,
+                    statut_abonnement_saas=etablissement.statut_abonnement_saas,
+                    date_fin_essai_saas=etablissement.date_fin_essai_saas,
+                    reference_paiement_saas=etablissement.reference_paiement_saas,
+                    acteur_nom="Seed de démonstration",
                 )
 
         nombre_enregistrements = 0
@@ -680,8 +744,140 @@ class Command(BaseCommand):
                 },
             )
 
+        for ligne in donnees.get("partenaires", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Un partenaire de stage possède un établissement invalide.")
+            PartenaireStage.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "nom_entreprise": contenu.get("nom_entreprise", ""),
+                    "secteur": contenu.get("secteur", ""),
+                    "ville": contenu.get("ville", ""),
+                    "nom_tuteur": contenu.get("nom_tuteur", ""),
+                    "telephone": contenu.get("telephone", ""),
+                    "places_disponibles": contenu.get("places_disponibles", 0),
+                    "stagiaires_actifs": contenu.get("stagiaires_actifs", 0),
+                },
+            )
+
+        for ligne in donnees.get("fils_discussion", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Une discussion possède un établissement invalide.")
+            fil, _ = FilDiscussionDirecte.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "sujet": contenu.get("sujet", ""),
+                    "nom_interlocuteur": contenu.get("nom_interlocuteur", ""),
+                    "role_interlocuteur": contenu.get("role_interlocuteur", ""),
+                    "categorie": contenu.get("categorie", "Administration"),
+                    "messages_non_lus": contenu.get("messages_non_lus", 0),
+                    "mis_a_jour_le": contenu.get("mis_a_jour_le", ""),
+                },
+            )
+            fil.messages.all().delete()
+            noms_participants = {fil.nom_interlocuteur}
+            for ordre, message in enumerate(contenu.get("messages", []) or []):
+                if not isinstance(message, dict) or not message.get("id"):
+                    raise CommandError("Une discussion contient un message invalide.")
+                MessageDirect.objects.create(
+                    id=message["id"],
+                    fil=fil,
+                    ordre=ordre,
+                    nom_expediteur=message.get("nom_expediteur", ""),
+                    role_expediteur=message.get("role_expediteur", ""),
+                    contenu=message.get("contenu", ""),
+                    envoye_le=message.get("envoye_le", ""),
+                )
+                if message.get("nom_expediteur"):
+                    noms_participants.add(message["nom_expediteur"])
+            participants = Utilisateur.objects.filter(
+                is_active=True,
+                affiliations__etablissement=etablissement,
+                nom_complet__in=noms_participants,
+            ).distinct()
+            fil.participants.set(participants)
+
+        for ligne in donnees.get("badges_attribues", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            apprenant = Apprenant.objects.filter(
+                pk=contenu.get("id_apprenant"),
+                etablissement=etablissement,
+            ).first()
+            if etablissement is None or apprenant is None:
+                raise CommandError("Un badge référence un apprenant ou établissement invalide.")
+            AttributionBadge.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "apprenant": apprenant,
+                    "titre_badge": contenu.get("titre_badge", ""),
+                    "categorie": contenu.get("categorie", ""),
+                    "attribue_le": contenu.get("attribue_le", ""),
+                    "attribue_par": contenu.get("attribue_par", ""),
+                },
+            )
+
+        for ligne in donnees.get("journaux_importations", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Un journal d’importation possède un établissement invalide.")
+            LotImportation.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "cible": contenu.get("cible", ""),
+                    "nom_fichier": contenu.get("nom_fichier", ""),
+                    "statut": contenu.get("statut", "TERMINE"),
+                    "nombre_lignes": contenu.get(
+                        "lignes_importees",
+                        contenu.get("nombre_lignes", 0),
+                    ),
+                    "nombre_erreurs": contenu.get("nombre_erreurs", 0),
+                    "importe_le": contenu.get("importe_le", ""),
+                    "importe_par": contenu.get("importe_par", ""),
+                    "resume": contenu.get("resume", {}) or {},
+                },
+            )
+
+        for ligne in donnees.get("demandes_conge", []) or []:
+            contenu = dict(ligne)
+            etablissement = etablissements.get(contenu.get("id_etablissement"))
+            if etablissement is None:
+                raise CommandError("Une demande de congé possède un établissement invalide.")
+            DemandeConge.objects.update_or_create(
+                id=contenu["id"],
+                defaults={
+                    "etablissement": etablissement,
+                    "nom_personnel": contenu.get("nom_personnel", ""),
+                    "libelle_role": contenu.get("libelle_role", ""),
+                    "type_conge": contenu.get("type_conge", "Congé annuel"),
+                    "date_debut": contenu.get("date_debut", ""),
+                    "date_fin": contenu.get("date_fin", ""),
+                    "motif": contenu.get("motif", ""),
+                    "statut": contenu.get("statut", "EN_ATTENTE"),
+                    "demande_le": contenu.get("demande_le", ""),
+                    "traite_par": contenu.get("traite_par", ""),
+                },
+            )
+
         for collection, lignes in donnees.items():
-            if collection in {"etablissements", "utilisateurs"}:
+            if collection in {
+                "etablissements",
+                "utilisateurs",
+                "partenaires",
+                "fils_discussion",
+                "badges_attribues",
+                "journaux_importations",
+                "demandes_conge",
+            }:
                 continue
             for ligne in lignes:
                 contenu = dict(ligne)
@@ -737,6 +933,21 @@ class Command(BaseCommand):
                     etablissement=etablissement
                 ).count(),
                 "articles_actualites": ArticleActualite.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "partenaires": PartenaireStage.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "fils_discussion": FilDiscussionDirecte.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "badges_attribues": AttributionBadge.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "journaux_importations": LotImportation.objects.filter(
+                    etablissement=etablissement
+                ).count(),
+                "demandes_conge": DemandeConge.objects.filter(
                     etablissement=etablissement
                 ).count(),
             }
@@ -835,6 +1046,31 @@ class Command(BaseCommand):
                 "articles_actualites": sum(
                     1
                     for ligne in donnees.get("articles_actualites", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "partenaires": sum(
+                    1
+                    for ligne in donnees.get("partenaires", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "fils_discussion": sum(
+                    1
+                    for ligne in donnees.get("fils_discussion", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "badges_attribues": sum(
+                    1
+                    for ligne in donnees.get("badges_attribues", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "journaux_importations": sum(
+                    1
+                    for ligne in donnees.get("journaux_importations", [])
+                    if ligne.get("id_etablissement") == id_etablissement
+                ),
+                "demandes_conge": sum(
+                    1
+                    for ligne in donnees.get("demandes_conge", [])
                     if ligne.get("id_etablissement") == id_etablissement
                 ),
             }

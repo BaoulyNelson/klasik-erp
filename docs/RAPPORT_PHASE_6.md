@@ -52,3 +52,27 @@ Ces éléments sont reportés explicitement plutôt que prétendus terminés.
 - Le verrou npm a été vérifié dans une copie propre, car deux serveurs Vite déjà actifs empêchaient le remplacement sûr de leurs exécutables Windows dans `node_modules`. Aucun de ces processus n’a été arrêté.
 
 **Conclusion de phase :** le socle de conteneurisation et de récupération de mot de passe est plus robuste, mais l’application n’est toujours pas certifiée prête pour la production. Les limites ci-dessus exigent encore implémentation ou validation réelle.
+
+## Finalisation du schéma relationnel — 23 novembre 2026
+
+### Réalisé
+
+- `partenaires`, `fils_discussion` (avec messages), `badges_attribues`, `journaux_importations` et `demandes_conge` disposent maintenant de modèles, serializers, routes typées et permissions tenant/RBAC. Les champs JSON exposés restent compatibles avec `src/modeles/erp.ts`; l’ancien accès générique à ces collections est fermé.
+- La migration `donnees.0005` transfère les lignes JSON vers les modèles, refuse explicitement les références ou relations incohérentes et restaure le contrat JSON au rollback.
+- Les règlements hors espèces exigent une référence côté API et interface; les reçus précisent qu’il s’agit d’un enregistrement manuel sans passerelle en ligne. L’inscription initiale vérifie aussi la référence dans son handler.
+- Sans configuration Firebase, le bouton Google est désactivé avec un message explicite. Ce comportement a été observé dans le navigateur.
+- Le modèle `.env.example`, les arguments de build Firebase et le câblage Compose ont été vérifiés statiquement : PostgreSQL, `DJANGO_DEBUG=false`, migrations et `collectstatic` au démarrage, fichiers statiques relayés par Nginx.
+
+### Vérifications exécutées
+
+- `makemigrations --check --dry-run` : aucune migration manquante.
+- `manage.py test api` : 91 tests réussis, exécutés sur une base SQLite temporaire isolée; les tests couvrent les contrats, les permissions tenant/apprenant et la migration/réversibilité.
+- `npm run lint` : réussi.
+- `npm run build` : réussi; l’avertissement préexistant de chunk JavaScript supérieur à 500 Ko demeure.
+- Une base de démonstration SQLite isolée a été migrée puis supprimée. Aucune migration ni donnée fictive n’a été appliquée à la vraie base.
+
+### Non vérifié — ne pas considérer la mise en production certifiée
+
+- Docker n’est pas installé; Compose et les images n’ont donc pas été exécutés.
+- Le parcours Playwright complet n’a pas abouti : avec des comptes fictifs sur la base isolée, la connexion au travers du navigateur a reçu HTTP 403 sur `/api/auth/token/` et généré une erreur console. Les tests Django avec client CSRF passent, mais le refus navigateur reste à diagnostiquer. Aucun parcours métier complet ni contrôle exhaustif du journal réseau n’est certifié.
+- La migration de production n’a pas été appliquée; elle doit d’abord être précédée d’une sauvegarde vérifiée et d’une répétition sur une copie de la base réelle.

@@ -48,7 +48,7 @@ export const VueImportations: React.FC = () => {
     importer_donnees_lot,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const profil_pays = PROFILS_PAYS[etablissement_actif.code_pays] ?? PROFILS_PAYS.INTL;
   const [cible, definir_cible] = useState<CibleImportation>('APPRENANTS');
   const [nom_fichier, definir_nom_fichier] = useState('import_manuel.csv');

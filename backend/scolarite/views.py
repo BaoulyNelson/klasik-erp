@@ -1,4 +1,5 @@
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -61,6 +62,10 @@ class UniteViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("parametres:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("parametres:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         etablissement = self.verifier_permission("parametres:gerer")
         serializer = self.get_serializer(data=request.data)
@@ -94,6 +99,10 @@ class ElementViewSet(VueTenantMixin, viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         self.verifier_permission("parametres:voir")
         return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("parametres:voir")
+        return super().retrieve(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
         etablissement = self.verifier_permission("parametres:gerer")
@@ -233,6 +242,10 @@ class InscriptionViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("admissions:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("admissions:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         etablissement = self.verifier_permission("admissions:gerer")
         apprenant = Apprenant.objects.filter(
@@ -258,18 +271,63 @@ class InscriptionViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("admissions:gerer")
         return super().partial_update(request, *args, **kwargs)
 
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("admissions:gerer")
+        return super().update(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        with transaction.atomic():
+            inscription = serializer.save()
+            from donnees.models import EntreeAuditApi
+
+            EntreeAuditApi.objects.create(
+                etablissement=inscription.etablissement,
+                utilisateur=self.request.user,
+                nom_acteur=self.request.user.nom_complet,
+                role_acteur=role_utilisateur_etablissement(
+                    self.request.user,
+                    inscription.etablissement,
+                ),
+                action="MODIFICATION",
+                collection="inscriptions",
+                id_objet=inscription.id,
+            )
+
     def destroy(self, request, *args, **kwargs):
         self.verifier_permission("admissions:gerer")
-        return super().destroy(request, *args, **kwargs)
+        with transaction.atomic():
+            return super().destroy(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        from donnees.models import EntreeAuditApi
+
+        EntreeAuditApi.objects.create(
+            etablissement=instance.etablissement,
+            utilisateur=self.request.user,
+            nom_acteur=self.request.user.nom_complet,
+            role_acteur=role_utilisateur_etablissement(
+                self.request.user,
+                instance.etablissement,
+            ),
+            action="SUPPRESSION",
+            collection="inscriptions",
+            id_objet=instance.id,
+        )
+        instance.delete()
 
     @action(detail=True, methods=["post"], url_path="annuler")
     def annuler(self, request, *args, **kwargs):
         self.verifier_permission("admissions:gerer")
         inscription = self.get_object()
-        if inscription.statut_inscription == "ANNULEE":
-            raise ValidationError({"statut_inscription": "Cette inscription est déjà annulée."})
+        if inscription.statut_inscription != "VALIDEE":
+            raise ValidationError(
+                {"statut_inscription": "Seule une inscription validée peut être annulée."}
+            )
+        motif = request.data.get("motif_statut", "")
+        if not isinstance(motif, str) or not motif.strip():
+            raise ValidationError({"motif_statut": "Un motif est obligatoire pour annuler."})
         inscription.statut_inscription = "ANNULEE"
-        motif = request.data.get("motif_statut", "").strip()
+        motif = motif.strip()
         inscription.motif_statut = motif or "Annulation enregistrée"
         inscription.save(update_fields=("statut_inscription", "motif_statut"))
         from donnees.models import EntreeAuditApi
@@ -278,7 +336,37 @@ class InscriptionViewSet(VueTenantMixin, viewsets.ModelViewSet):
             utilisateur=request.user,
             nom_acteur=request.user.nom_complet,
             role_acteur=role_utilisateur_etablissement(request.user, inscription.etablissement),
-            action="MODIFICATION",
+            action="ANNULATION",
+            collection="inscriptions",
+            id_objet=inscription.id,
+        )
+        return Response(self.get_serializer(inscription).data)
+
+    @action(detail=True, methods=["post"], url_path="archiver")
+    def archiver(self, request, *args, **kwargs):
+        self.verifier_permission("admissions:gerer")
+        inscription = self.get_object()
+        if inscription.statut_inscription != "VALIDEE":
+            raise ValidationError(
+                {"statut_inscription": "Seule une inscription validée peut être archivée."}
+            )
+        motif = request.data.get("motif_statut", "")
+        if not isinstance(motif, str) or not motif.strip():
+            raise ValidationError({"motif_statut": "Un motif est obligatoire pour archiver."})
+        inscription.statut_inscription = "ARCHIVEE"
+        inscription.motif_statut = motif.strip() or "Archivage enregistré"
+        inscription.save(update_fields=("statut_inscription", "motif_statut"))
+        from donnees.models import EntreeAuditApi
+
+        EntreeAuditApi.objects.create(
+            etablissement=inscription.etablissement,
+            utilisateur=request.user,
+            nom_acteur=request.user.nom_complet,
+            role_acteur=role_utilisateur_etablissement(
+                request.user,
+                inscription.etablissement,
+            ),
+            action="ARCHIVAGE",
             collection="inscriptions",
             id_objet=inscription.id,
         )

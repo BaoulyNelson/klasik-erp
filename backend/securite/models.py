@@ -41,8 +41,8 @@ class AttributionBadge(models.Model):
     id = models.CharField(max_length=128, primary_key=True)
     etablissement = models.ForeignKey("etablissements.Etablissement", on_delete=models.CASCADE, db_column="id_etablissement", related_name="badges_attribues")
     apprenant = models.ForeignKey("scolarite.Apprenant", on_delete=models.CASCADE, db_column="id_apprenant", related_name="badges_attribues")
-    code_badge = models.CharField(max_length=64)
-    titre = models.CharField(max_length=191)
+    titre_badge = models.CharField(max_length=191)
+    categorie = models.CharField(max_length=64, default="")
     attribue_le = models.CharField(max_length=32)
     attribue_par = models.CharField(max_length=191)
 

@@ -3,6 +3,8 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
+  Clock3,
+  Eye,
   Globe,
   Mail,
   MapPin,
@@ -18,12 +20,14 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  UserRound,
 } from 'lucide-react';
 import { BadgeTypeEtablissement } from '../../composants/interface/BadgeTypeEtablissement';
 import { Bouton } from '../../composants/interface/Bouton';
 import { Carte } from '../../composants/interface/Carte';
 import { LogoEtablissement } from '../../composants/interface/LogoEtablissement';
 import { LogoPlateforme } from '../../composants/interface/LogoPlateforme';
+import { Modale } from '../../composants/interface/Modale';
 import { ModaleConfirmationAction } from '../../composants/interface/ModaleConfirmationAction';
 import {
   CATALOGUE_FORFAITS_SAAS,
@@ -31,7 +35,12 @@ import {
   resoudre_statut_abonnement_saas,
 } from '../../configuration/forfaits_saas';
 import { utiliserErp } from '../../contexte/ContexteErp';
-import { ConfigurationEtablissement, ConfigurationPlateforme } from '../../modeles/erp';
+import {
+  ConfigurationEtablissement,
+  ConfigurationPlateforme,
+  HistoriqueAbonnementSaas,
+} from '../../modeles/erp';
+import { requeteApi } from '../../services/clientApi';
 import { formater_date_fr, formater_montant } from '../../services/service_donnees';
 import { traiter_image_logo } from '../../utilitaires/image_logo';
 
@@ -51,6 +60,7 @@ const COULEURS_MARQUE: {
 export const VueAdministrationPlateforme: React.FC = () => {
   const {
     configuration_plateforme,
+    utilisateur_actif,
     mettre_a_jour_configuration_plateforme,
     reinitialiser_configuration_plateforme,
     etablissements,
@@ -68,18 +78,62 @@ export const VueAdministrationPlateforme: React.FC = () => {
 
   const [onglet_actif, definir_onglet_actif] = useState<'reseau' | 'marque'>('reseau');
   const [recherche_verification, definir_recherche_verification] = useState('');
+  const [recherche_etablissements, definir_recherche_etablissements] = useState('');
   const [cible_suppression, definir_cible_suppression] =
     useState<ConfigurationEtablissement | null>(null);
   const [cible_suspension, definir_cible_suspension] =
     useState<ConfigurationEtablissement | null>(null);
+  const [cible_supervision, definir_cible_supervision] =
+    useState<ConfigurationEtablissement | null>(null);
+  const [cible_details, definir_cible_details] =
+    useState<ConfigurationEtablissement | null>(null);
+  const [historique_forfaits, definir_historique_forfaits] =
+    useState<HistoriqueAbonnementSaas[]>([]);
+  const [chargement_historique, definir_chargement_historique] = useState(false);
+  const [erreur_historique, definir_erreur_historique] = useState<string | null>(null);
   const [confirmation_reinit_marque, definir_confirmation_reinit_marque] = useState(false);
   const ref_champ_logo = useRef<HTMLInputElement>(null);
 
   const [ebauche, definir_ebauche] = useState<ConfigurationPlateforme>(configuration_plateforme);
+  const peut_consulter_donnees_metier = utilisateur_actif.affiliations.length > 0;
 
   useEffect(() => {
     definir_ebauche(configuration_plateforme);
   }, [configuration_plateforme]);
+
+  useEffect(() => {
+    if (!cible_details) {
+      definir_historique_forfaits([]);
+      definir_erreur_historique(null);
+      return;
+    }
+
+    let effet_actif = true;
+    definir_chargement_historique(true);
+    definir_erreur_historique(null);
+    void requeteApi<{ historique_forfaits_saas: HistoriqueAbonnementSaas[] }>(
+      `/plateforme/etablissements/${encodeURIComponent(cible_details.id)}/`
+    )
+      .then(({ historique_forfaits_saas }) => {
+        if (effet_actif) definir_historique_forfaits(historique_forfaits_saas);
+      })
+      .catch((erreur: unknown) => {
+        if (effet_actif) {
+          definir_erreur_historique(
+            erreur instanceof Error
+              ? erreur.message
+              : 'Impossible de charger l’historique du forfait.'
+          );
+        }
+      })
+      .finally(() => {
+        if (effet_actif) definir_chargement_historique(false);
+      });
+
+    return () => {
+      effet_actif = false;
+    };
+  }, [cible_details]);
 
   const indicateurs = useMemo(() => {
     const nombre_pays = new Set(etablissements.map((etab) => etab.code_pays)).size;
@@ -105,6 +159,29 @@ export const VueAdministrationPlateforme: React.FC = () => {
       ) ?? null
     );
   }, [recherche_verification, tous_les_documents]);
+
+  const etablissements_filtres = useMemo(() => {
+    const requete = recherche_etablissements.trim().toLocaleLowerCase();
+    if (!requete) return etablissements;
+    return etablissements.filter((etab) => {
+      const administrateurs = (etab.administrateurs_affilies ?? [])
+        .flatMap((admin) => [admin.nom, admin.courriel])
+        .join(' ');
+      return [
+        etab.nom,
+        etab.ville,
+        etab.nom_pays,
+        etab.code_pays,
+        etab.proprietaire_nom,
+        etab.proprietaire_courriel,
+        administrateurs,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase()
+        .includes(requete);
+    });
+  }, [etablissements, recherche_etablissements]);
 
   const gerer_fichier_logo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fichier = e.target.files?.[0];
@@ -178,6 +255,30 @@ export const VueAdministrationPlateforme: React.FC = () => {
         </div>
       </div>
 
+      {cible_supervision && (
+        <div
+          role="status"
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/80 p-4 dark:border-indigo-900/60 dark:bg-indigo-950/30"
+        >
+          <div>
+            <p className="text-sm font-semibold text-indigo-950 dark:text-indigo-100">
+              Supervision plateforme · {cible_supervision.nom}
+            </p>
+            <p className="text-xs text-indigo-900/80 dark:text-indigo-200/80 mt-1">
+              Vue limitée aux informations d’établissement et d’abonnement. Les apprenants, notes,
+              paiements et données de paie restent inaccessibles sans affiliation explicite.
+            </p>
+          </div>
+          <Bouton
+            variante="secondaire"
+            taille="sm"
+            onClick={() => definir_cible_supervision(null)}
+          >
+            Quitter la supervision
+          </Bouton>
+        </div>
+      )}
+
       {onglet_actif === 'reseau' ? (
         <>
           {/* Indicateurs plateforme mondiale */}
@@ -194,10 +295,12 @@ export const VueAdministrationPlateforme: React.FC = () => {
             <Carte>
               <div className="text-xs text-slate-500">Apprenants hébergés</div>
               <div className="text-2xl font-display font-bold mt-1 tabular-nums">
-                {indicateurs.total_apprenants}
+                {peut_consulter_donnees_metier ? indicateurs.total_apprenants : '—'}
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
-                Isolation stricte par id_etablissement
+                {peut_consulter_donnees_metier
+                  ? 'Données des établissements affiliés uniquement'
+                  : 'Non consultables sans affiliation'}
               </div>
             </Carte>
             <Carte>
@@ -210,25 +313,51 @@ export const VueAdministrationPlateforme: React.FC = () => {
             <Carte>
               <div className="text-xs text-slate-500">Volume encaissé consolidé</div>
               <div className="text-2xl font-display font-bold mt-1 font-mono tabular-nums">
-                {formater_montant(indicateurs.total_encaisse_pivot, 'USD')}
+                {peut_consulter_donnees_metier
+                  ? formater_montant(indicateurs.total_encaisse_pivot, 'USD')
+                  : '—'}
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">Équivalent USD agrégé</div>
+              <div className="text-[11px] text-slate-400 mt-1">
+                {peut_consulter_donnees_metier
+                  ? 'Données des établissements affiliés uniquement'
+                  : 'Non consultable sans affiliation'}
+              </div>
             </Carte>
           </div>
 
           {/* Tableau consolidé des établissements dans le monde */}
           <Carte rembourrage="aucun">
-            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-              <Globe className="w-4 h-4 text-indigo-600" />
-              <h3 className="text-sm font-display font-bold">
-                Réseau mondial des établissements ({etablissements.length})
-              </h3>
+            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-indigo-600" />
+                <h3 className="text-sm font-display font-bold">
+                  Réseau mondial des établissements ({etablissements_filtres.length}
+                  {etablissements_filtres.length !== etablissements.length
+                    ? ` / ${etablissements.length}`
+                    : ''}
+                  )
+                </h3>
+              </div>
+              <div className="relative w-full max-w-xl">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="search"
+                  value={recherche_etablissements}
+                  onChange={(e) => definir_recherche_etablissements(e.target.value)}
+                  placeholder="Rechercher par établissement, ville, pays, propriétaire ou courriel…"
+                  aria-label="Rechercher un établissement ou son responsable"
+                  className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
+                />
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 text-slate-500">
                     <th className="px-4 py-2.5 text-left font-semibold">Établissement</th>
+                    <th className="px-4 py-2.5 text-left font-semibold">
+                      Propriétaire / Responsable
+                    </th>
                     <th className="px-4 py-2.5 text-left font-semibold">Pays & Fuseau</th>
                     <th className="px-4 py-2.5 text-left font-semibold">Tutelle / Norme</th>
                     <th className="px-4 py-2.5 text-left font-semibold">Devise</th>
@@ -239,10 +368,17 @@ export const VueAdministrationPlateforme: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {etablissements.map((etab) => {
-                    const effectif = tous_les_apprenants.filter(
-                      (apprenant) => apprenant.id_etablissement === etab.id
-                    ).length;
+                  {etablissements_filtres.map((etab) => {
+                    const est_affilie = utilisateur_actif.affiliations.some(
+                      (affiliation) => affiliation.id_etablissement === etab.id
+                    );
+                    const effectif =
+                      etab.nombre_apprenants_total ??
+                      (est_affilie
+                        ? tous_les_apprenants.filter(
+                            (apprenant) => apprenant.id_etablissement === etab.id
+                          ).length
+                        : 0);
                     return (
                       <tr key={etab.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
                         <td className="px-4 py-3">
@@ -263,6 +399,30 @@ export const VueAdministrationPlateforme: React.FC = () => {
                               </div>
                             </div>
                           </div>
+                        </td>
+                        <td className="px-4 py-3 min-w-56">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-900 dark:text-slate-100">
+                              {etab.proprietaire_nom || etab.nom_direction || 'Responsable à renseigner'}
+                            </span>
+                            <span
+                              className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                est_affilie
+                                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                              }`}
+                            >
+                              {est_affilie ? 'Votre compte' : 'Client'}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                            {etab.proprietaire_courriel || etab.courriel || '—'}
+                          </div>
+                          {etab.proprietaire_telephone && (
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {etab.proprietaire_telephone}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-slate-800 dark:text-slate-200">
@@ -335,16 +495,37 @@ export const VueAdministrationPlateforme: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex items-center justify-end gap-1.5">
+                            {utilisateur_actif.affiliations.some(
+                              (affiliation) => affiliation.id_etablissement === etab.id
+                            ) ? (
+                              <Bouton
+                                variante="secondaire"
+                                taille="sm"
+                                onClick={() => {
+                                  changer_etablissement(etab.id);
+                                  definir_route_active('tableau_de_bord');
+                                }}
+                              >
+                                <span>Ouvrir mon établissement</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </Bouton>
+                            ) : (
+                              <Bouton
+                                variante="secondaire"
+                                taille="sm"
+                                onClick={() => definir_cible_supervision(etab)}
+                              >
+                                <span>Superviser</span>
+                              </Bouton>
+                            )}
                             <Bouton
-                              variante="secondaire"
+                              variante="fantome"
                               taille="sm"
-                              onClick={() => {
-                                changer_etablissement(etab.id);
-                                definir_route_active('tableau_de_bord');
-                              }}
+                              title={`Consulter les détails client de ${etab.nom}`}
+                              onClick={() => definir_cible_details(etab)}
                             >
-                              <span>Ouvrir</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Détails client</span>
                             </Bouton>
                             <Bouton
                               variante={etab.statut === 'SUSPENDU' ? 'principal' : 'fantome'}
@@ -389,6 +570,16 @@ export const VueAdministrationPlateforme: React.FC = () => {
                       </tr>
                     );
                   })}
+                  {etablissements_filtres.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={9}
+                        className="px-4 py-8 text-center text-xs text-slate-500 dark:text-slate-400"
+                      >
+                        Aucun établissement ne correspond à cette recherche.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -769,6 +960,203 @@ export const VueAdministrationPlateforme: React.FC = () => {
           </Carte>
         </div>
       )}
+
+      <Modale
+        ouverte={Boolean(cible_details)}
+        sur_fermeture={() => definir_cible_details(null)}
+        titre="Détails client"
+        sous_titre={cible_details?.nom}
+        classe_largeur_max="max-w-3xl"
+      >
+        {cible_details && (
+          <div className="space-y-5 text-xs">
+            <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+              <div className="flex items-start gap-3">
+                <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-sm text-slate-900 dark:text-slate-100">
+                      {cible_details.proprietaire_nom ||
+                        cible_details.nom_direction ||
+                        'Responsable à renseigner'}
+                    </h3>
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                        utilisateur_actif.affiliations.some(
+                          (affiliation) =>
+                            affiliation.id_etablissement === cible_details.id
+                        )
+                          ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      {utilisateur_actif.affiliations.some(
+                        (affiliation) =>
+                          affiliation.id_etablissement === cible_details.id
+                      )
+                        ? 'Votre compte'
+                        : 'Client'}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 text-slate-600 dark:text-slate-300">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span className="truncate">
+                        {cible_details.proprietaire_courriel ||
+                          cible_details.courriel ||
+                          'Courriel non renseigné'}
+                      </span>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span>
+                        {cible_details.proprietaire_telephone ||
+                          cible_details.telephone ||
+                          'Téléphone non renseigné'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        {[cible_details.ville, cible_details.nom_pays]
+                          .filter(Boolean)
+                          .join(', ') || 'Localisation non renseignée'}
+                      </span>
+                    </div>
+                    {cible_details.cree_le && (
+                      <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                        <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                        <span>Créé le {formater_date_fr(cible_details.cree_le)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100">
+                  Responsables affiliés
+                </h3>
+                <span className="text-[11px] text-slate-500">
+                  {cible_details.administrateurs_affilies?.length ?? 0}
+                </span>
+              </div>
+              <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                {(cible_details.administrateurs_affilies ?? []).length > 0 ? (
+                  cible_details.administrateurs_affilies?.map((administrateur) => (
+                    <div
+                      key={`${administrateur.role}-${administrateur.courriel}`}
+                      className="flex flex-col gap-1 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <div className="font-medium text-slate-800 dark:text-slate-200">
+                          {administrateur.nom}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {administrateur.courriel}
+                        </div>
+                      </div>
+                      <span className="w-fit rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {administrateur.role === 'DIRECTEUR'
+                          ? 'Directeur'
+                          : 'Administrateur'}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="px-3 py-3 text-slate-500 dark:text-slate-400">
+                    Aucun directeur ou administrateur affilié.
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <h3 className="mb-2 font-semibold text-slate-900 dark:text-slate-100">
+                Forfait SaaS
+              </h3>
+              <div className="grid gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-2 dark:border-slate-800">
+                <div>
+                  <div className="text-[11px] text-slate-500">Offre actuelle</div>
+                  <div className="mt-0.5 font-semibold">{cible_details.offre_saas}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-slate-500">Statut</div>
+                  <div className="mt-0.5 font-semibold">
+                    {resoudre_statut_abonnement_saas(cible_details)}
+                  </div>
+                </div>
+                {cible_details.date_fin_essai_saas && (
+                  <div>
+                    <div className="text-[11px] text-slate-500">Fin d’essai</div>
+                    <div className="mt-0.5">
+                      {formater_date_fr(cible_details.date_fin_essai_saas)}
+                    </div>
+                  </div>
+                )}
+                {cible_details.reference_paiement_saas && (
+                  <div>
+                    <div className="text-[11px] text-slate-500">Référence de paiement</div>
+                    <div className="mt-0.5 font-mono">
+                      {cible_details.reference_paiement_saas}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <h3 className="mb-2 flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
+                <Clock3 className="h-3.5 w-3.5 text-indigo-600" />
+                Historique du forfait
+              </h3>
+              {chargement_historique ? (
+                <p className="text-slate-500 dark:text-slate-400">
+                  Chargement de l’historique…
+                </p>
+              ) : erreur_historique ? (
+                <p role="alert" className="text-red-600 dark:text-red-400">
+                  {erreur_historique}
+                </p>
+              ) : historique_forfaits.length > 0 ? (
+                <ol className="space-y-2">
+                  {historique_forfaits.map((entree) => (
+                    <li
+                      key={entree.id}
+                      className="rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-800"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold">{entree.offre_saas}</span>
+                        <span className="text-[11px] text-slate-500">
+                          {formater_date_fr(entree.cree_le)}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {entree.statut_abonnement_saas || 'Statut non précisé'}
+                        {entree.date_fin_essai_saas
+                          ? ` · Fin d’essai : ${formater_date_fr(entree.date_fin_essai_saas)}`
+                          : ''}
+                        {entree.modifie_par ? ` · Modifié par ${entree.modifie_par}` : ''}
+                      </div>
+                      {entree.reference_paiement_saas && (
+                        <div className="mt-1 font-mono text-[10px] text-slate-500">
+                          Réf. {entree.reference_paiement_saas}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="text-slate-500 dark:text-slate-400">
+                  Aucun changement de forfait enregistré.
+                </p>
+              )}
+            </section>
+          </div>
+        )}
+      </Modale>
 
       <ModaleConfirmationAction
         ouverte={Boolean(cible_suppression)}

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from scolarite.models import Apprenant
 from .models import AttributionBadge, ConsentementRgpd, DemandeRgpd, LotImportation
 
 
@@ -21,14 +22,34 @@ class DemandeRgpdSerializer(serializers.ModelSerializer):
 
 class LotImportationSerializer(serializers.ModelSerializer):
     id_etablissement = serializers.CharField(source="etablissement_id", read_only=True)
+    lignes_importees = serializers.IntegerField(
+        source="nombre_lignes",
+        min_value=0,
+    )
+
     class Meta:
         model=LotImportation
-        fields=["id","id_etablissement","cible","nom_fichier","statut","nombre_lignes","nombre_erreurs","importe_le","importe_par","resume"]
+        fields=["id","id_etablissement","cible","nom_fichier","lignes_importees","importe_le","importe_par"]
 
 
 class AttributionBadgeSerializer(serializers.ModelSerializer):
     id_etablissement = serializers.CharField(source="etablissement_id", read_only=True)
-    id_apprenant = serializers.CharField(source="apprenant_id", read_only=True)
+    id_apprenant = serializers.PrimaryKeyRelatedField(
+        source="apprenant",
+        queryset=Apprenant.objects.none(),
+    )
+    titre_badge = serializers.CharField()
+    categorie = serializers.CharField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        view = self.context.get("view")
+        tenant = getattr(view, "tenant", None)
+        if tenant is not None:
+            self.fields["id_apprenant"].queryset = Apprenant.objects.filter(
+                etablissement=tenant
+            )
+
     class Meta:
         model=AttributionBadge
-        fields=["id","id_etablissement","id_apprenant","code_badge","titre","attribue_le","attribue_par"]
+        fields=["id","id_etablissement","id_apprenant","titre_badge","categorie","attribue_le","attribue_par"]

@@ -18,15 +18,21 @@ import {
   construire_echeancier_defaut,
   recalculer_repartition_echeancier,
 } from '../utilitaires/echeancier';
-import { connecter_avec_popup_google, deconnecter_firebase } from '../services/service_firebase';
+import {
+  connecter_avec_popup_google,
+  connecter_avec_popup_google_api,
+  deconnecter_firebase,
+} from '../services/service_firebase';
 import {
   connecterApi,
-  connecterDemoApi,
+  connecterGoogleApi,
   deconnecterApi,
   ErreurApi,
+  installer_session_api,
   requeteApi,
   sessionApiPresente,
 } from '../services/clientApi';
+import { effacer_brouillons_admission } from '../services/service_brouillons';
 import {
   APPRENANTS_INITIAUX,
   DOCUMENTS_INITIAUX,
@@ -135,15 +141,34 @@ import {
 const CLE_STOCKAGE_ETAT = 'klasik_etat_erp_v4';
 const CLE_STOCKAGE_SESSION = 'klasik_session_v4';
 const SOURCE_API = import.meta.env.PROD || import.meta.env.VITE_SOURCE_DONNEES === 'api';
+const UTILISATEUR_ANONYME: CompteUtilisateur = {
+  id: '',
+  nom_complet: '',
+  courriel: '',
+  telephone: '',
+  mot_de_passe_demo: '',
+  initiales_avatar: '',
+  affiliations: [],
+};
 
 interface ProfilApi {
   id: string;
   nom_complet: string;
   courriel: string;
   telephone: string;
+  biographie: string;
+  poste: string;
+  departement: string;
+  ville: string;
+  pays: string;
+  url_linkedin: string;
+  langue_preferee: CompteUtilisateur['langue_preferee'];
+  preferences_notifications: CompteUtilisateur['preferences_notifications'];
+  double_facteur_actif: boolean;
   role: IdentifiantRole;
   est_super_admin_plateforme: boolean;
   est_actif: boolean;
+  doit_changer_mot_de_passe: boolean;
   affiliations: CompteUtilisateur['affiliations'];
   ids_apprenants_lies: string[];
   url_avatar?: string | null;
@@ -297,8 +322,11 @@ const COLLECTIONS_RELATIONNELLES_TYPED = new Set([
   'remises_devoirs_lms',
   'consentements_rgpd',
   'demandes_rgpd',
+  'partenaires',
+  'fils_discussion',
   'journaux_importations',
   'badges_attribues',
+  'demandes_conge',
 ]);
 
 async function charger_collection_api(
@@ -433,7 +461,7 @@ function charger_etat_initial(): EtatPersiste {
     if (!brut) return defaut;
     const analyse = JSON.parse(brut) as Partial<EtatPersiste>;
 
-    const utilisateurs_fusionnes =
+    const utilisateurs_fusionnes_source =
       Array.isArray(analyse.utilisateurs) && analyse.utilisateurs.length > 0
         ? [
             ...UTILISATEURS_INITIAUX.map(
@@ -444,6 +472,16 @@ function charger_etat_initial(): EtatPersiste {
             ),
           ]
         : defaut.utilisateurs;
+    const utilisateurs_fusionnes = utilisateurs_fusionnes_source.map((utilisateur) =>
+      utilisateur.est_super_admin_plateforme
+        ? {
+            ...utilisateur,
+            affiliations: utilisateur.affiliations.filter(
+              (affiliation) => affiliation.id_role !== 'SUPER_ADMIN'
+            ),
+          }
+        : utilisateur
+    );
 
     const etablissements_fusionnes =
       Array.isArray(analyse.etablissements) && analyse.etablissements.length > 0
@@ -583,7 +621,7 @@ function charger_session_initiale(): SessionPersistee {
     return {
       mode_affichage: 'accueil',
       est_authentifie: false,
-      id_utilisateur_actif: UTILISATEURS_INITIAUX[1].id,
+      id_utilisateur_actif: UTILISATEURS_INITIAUX[1]?.id ?? '',
       id_etablissement_actif: ETABLISSEMENTS_INITIAUX[0].id,
       route_active: 'tableau_de_bord',
       langue_active: langue_navigateur,
@@ -595,7 +633,7 @@ function charger_session_initiale(): SessionPersistee {
       return {
         mode_affichage: 'accueil',
         est_authentifie: false,
-        id_utilisateur_actif: UTILISATEURS_INITIAUX[1].id,
+        id_utilisateur_actif: UTILISATEURS_INITIAUX[1]?.id ?? '',
         id_etablissement_actif: ETABLISSEMENTS_INITIAUX[0].id,
         route_active: 'tableau_de_bord',
         langue_active: langue_navigateur,
@@ -609,7 +647,8 @@ function charger_session_initiale(): SessionPersistee {
         typeof analyse.est_authentifie === 'boolean'
           ? analyse.est_authentifie
           : mode_resolu === 'espace_travail',
-      id_utilisateur_actif: analyse.id_utilisateur_actif || UTILISATEURS_INITIAUX[1].id,
+      id_utilisateur_actif:
+        analyse.id_utilisateur_actif || UTILISATEURS_INITIAUX[1]?.id || '',
       id_etablissement_actif: analyse.id_etablissement_actif || ETABLISSEMENTS_INITIAUX[0].id,
       route_active: analyse.route_active || 'tableau_de_bord',
       langue_active:
@@ -621,7 +660,7 @@ function charger_session_initiale(): SessionPersistee {
     return {
       mode_affichage: 'accueil',
       est_authentifie: false,
-      id_utilisateur_actif: UTILISATEURS_INITIAUX[1].id,
+      id_utilisateur_actif: UTILISATEURS_INITIAUX[1]?.id ?? '',
       id_etablissement_actif: ETABLISSEMENTS_INITIAUX[0].id,
       route_active: 'tableau_de_bord',
       langue_active: langue_navigateur,
@@ -635,7 +674,9 @@ interface ValeurContexteErp {
   mode_affichage: 'accueil' | 'espace_travail';
   definir_mode_affichage: (mode: 'accueil' | 'espace_travail') => void;
   est_authentifie: boolean;
+  restauration_session_api_en_cours: boolean;
   etablissements: ConfigurationEtablissement[];
+  etablissements_affilies: ConfigurationEtablissement[];
   etablissements_accessibles: ConfigurationEtablissement[];
   utilisateurs: CompteUtilisateur[];
   etablissement_actif: ConfigurationEtablissement;
@@ -713,9 +754,8 @@ interface ValeurContexteErp {
     nouvelles_unites: UniteAcademique[],
     nouveaux_elements: ElementPedagogique[],
     compte_fondateur?: SaisieFondateurEtablissement
-  ) => boolean;
+  ) => Promise<boolean>;
   supprimer_etablissement: (id_etablissement: string) => boolean;
-  connecter_utilisateur: (id_utilisateur: string, id_etablissement_prefere?: string) => void;
   connecter_avec_google: () => Promise<{ ok: boolean; besoin_etablissement?: boolean; erreur?: string }>;
   authentifier_par_identifiants: (
     identifiant: string,
@@ -737,10 +777,6 @@ interface ValeurContexteErp {
     nouveau_mot_de_passe: string
   ) => Promise<{ ok: boolean; erreur?: string }>;
   deconnecter: () => void;
-  simuler_role_etablissement: (
-    id_role: IdentifiantRole,
-    options?: { rester_sur_vue?: boolean }
-  ) => void;
   definir_route_active: (route: IdentifiantRoute) => void;
   ouvrir_dossier_apprenant: (id_apprenant: string) => void;
   fermer_dossier_apprenant: () => void;
@@ -1165,10 +1201,12 @@ interface ValeurContexteErp {
     mot_de_passe_actuel: string,
     nouveau_mot_de_passe: string
   ) => boolean;
-  finaliser_changement_mot_de_passe_obligatoire: (nouveau_mot_de_passe: string) => {
+  finaliser_changement_mot_de_passe_obligatoire: (
+    nouveau_mot_de_passe: string
+  ) => Promise<{
     ok: boolean;
     erreur?: string;
-  };
+  }>;
   mettre_a_jour_configuration_plateforme: (
     modifications: Partial<ConfigurationPlateforme>
   ) => void;
@@ -1188,19 +1226,21 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   const session_initiale = useMemo(() => charger_session_initiale(), []);
   const instantane_api = useRef<EtatPersiste | null>(null);
   const file_synchronisation_api = useRef<Promise<void>>(Promise.resolve());
+  const notifications_api_precedentes = useRef<NotificationSysteme[] | null>(null);
   const [mode_affichage, definir_mode_affichage] = useState<'accueil' | 'espace_travail'>(
     session_initiale.mode_affichage
   );
   const [est_authentifie, definir_est_authentifie] = useState<boolean>(
     Boolean(session_initiale.est_authentifie)
   );
+  const [restauration_session_api_en_cours, definir_restauration_session_api_en_cours] =
+    useState(() => SOURCE_API && sessionApiPresente());
   const [id_etablissement_actif, definir_id_etablissement_actif] = useState<string>(
     session_initiale.id_etablissement_actif
   );
   const [id_utilisateur_actif, definir_id_utilisateur_actif] = useState<string>(
     session_initiale.id_utilisateur_actif
   );
-  const [surcharge_role, definir_surcharge_role] = useState<IdentifiantRole | null>(null);
   const [devise_active, definir_devise_active] = useState<CodeDevise>(() => {
     const etab = charger_etat_initial().etablissements.find(
       (element) => element.id === session_initiale.id_etablissement_actif
@@ -1296,9 +1336,34 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     const session_expiree = () => {
       definir_est_authentifie(false);
       definir_mode_affichage('accueil');
+      definir_restauration_session_api_en_cours(false);
     };
     window.addEventListener('klasik-api-session-expiree', session_expiree);
     return () => window.removeEventListener('klasik-api-session-expiree', session_expiree);
+  }, []);
+
+  useEffect(() => {
+    if (!SOURCE_API) return;
+    let effet_actif = true;
+    void requeteApi<{ url_logo: string }>('/plateforme/configuration/')
+      .then(({ url_logo }) => {
+        if (!effet_actif) return;
+        definir_etat((precedent) => ({
+          ...precedent,
+          configuration_plateforme: {
+            ...precedent.configuration_plateforme,
+            url_logo: url_logo || undefined,
+          },
+        }));
+      })
+      .catch((erreur: unknown) => {
+        if (effet_actif) {
+          console.error('Impossible de charger le logo public de la plateforme.', erreur);
+        }
+      });
+    return () => {
+      effet_actif = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -1330,31 +1395,70 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     () =>
       etat.utilisateurs.find((u) => u.id === id_utilisateur_actif) ??
       etat.utilisateurs[0] ??
-      UTILISATEURS_INITIAUX[0],
+      UTILISATEURS_INITIAUX[0] ??
+      UTILISATEUR_ANONYME,
     [etat.utilisateurs, id_utilisateur_actif]
   );
 
-  const etablissements_accessibles = useMemo(
+  const etablissements_affilies = useMemo(
     () =>
-      utilisateur_actif.est_super_admin_plateforme
-        ? etat.etablissements
-        : etat.etablissements.filter((e) =>
-            utilisateur_actif.affiliations.some((a) => a.id_etablissement === e.id)
-          ),
+      etat.etablissements.filter((e) =>
+        utilisateur_actif.affiliations.some((a) => a.id_etablissement === e.id)
+      ),
     [etat.etablissements, utilisateur_actif]
   );
+  const etablissements_accessibles = etablissements_affilies;
 
   const etablissement_actif = useMemo(() => {
     const autorise =
       etablissements_accessibles.find((e) => e.id === id_etablissement_actif) ??
       etablissements_accessibles[0];
     if (autorise) return autorise;
-    return (
-      etat.etablissements.find((e) => e.id === id_etablissement_actif) ??
-      etat.etablissements[0] ??
-      ETABLISSEMENTS_INITIAUX[0]
-    );
-  }, [etablissements_accessibles, etat.etablissements, id_etablissement_actif]);
+    return {
+      id: '',
+      code: 'PLAT',
+      nom: utilisateur_actif.est_super_admin_plateforme
+        ? 'Console Plateforme'
+        : 'Aucun établissement',
+      nom_court: utilisateur_actif.est_super_admin_plateforme ? 'Plateforme' : 'Aucun établissement',
+      type: 'SCOLAIRE',
+      code_pays: 'INTL',
+      nom_pays: '',
+      fuseau_horaire: 'UTC',
+      autorite_tutelle: '',
+      ville: '',
+      adresse: '',
+      telephone: '',
+      courriel: '',
+      site_web: '',
+      annee_academique: '',
+      libelle_periode_courante: '',
+      devise_defaut: 'USD',
+      taux_change_usd: 1,
+      format_matricule: '',
+      echelle_notation: 100,
+      note_passage: 0,
+      couleur_accent: 'blue',
+      devise_etablissement: '',
+      url_logo: undefined,
+      titre_direction: '',
+      nom_direction: '',
+      code_sceau: '',
+      services_actifs: {
+        bibliotheque: false,
+        cantine: false,
+        transport: false,
+        infirmerie: false,
+        anciens: false,
+      },
+      offre_saas: 'Gratuit',
+      statut_abonnement_saas: 'GRATUIT',
+      date_fin_essai_saas: '',
+      reference_paiement_saas: '',
+      bloquer_documents_si_impaye: true,
+      statut: 'ACTIF',
+    } satisfies ConfigurationEtablissement;
+  }, [etablissements_accessibles, id_etablissement_actif, utilisateur_actif.est_super_admin_plateforme]);
 
   const etablissement_favicon =
     est_authentifie &&
@@ -1434,7 +1538,12 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     if (
-      !utilisateur_actif.est_super_admin_plateforme &&
+      etablissements_accessibles.length === 0 &&
+      id_etablissement_actif !== ''
+    ) {
+      definir_id_etablissement_actif('');
+    }
+    if (
       etablissements_accessibles.length > 0 &&
       !etablissements_accessibles.some((e) => e.id === id_etablissement_actif)
     ) {
@@ -1443,10 +1552,19 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       definir_devise_active(repli.devise_defaut);
     }
   }, [
-    utilisateur_actif.est_super_admin_plateforme,
     etablissements_accessibles,
     id_etablissement_actif,
   ]);
+
+  useEffect(() => {
+    if (
+      utilisateur_actif.est_super_admin_plateforme &&
+      utilisateur_actif.affiliations.length === 0 &&
+      !['plateforme', 'profil'].includes(route_active)
+    ) {
+      definir_route_active_interne('plateforme');
+    }
+  }, [utilisateur_actif, route_active]);
 
   const terminologie = useMemo(
     () => obtenir_terminologie(etablissement_actif.type),
@@ -1454,14 +1572,13 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const id_role_actif: IdentifiantRole = useMemo(() => {
-    if (surcharge_role && ROLES[surcharge_role]) return surcharge_role;
-    if (utilisateur_actif.est_super_admin_plateforme) return 'SUPER_ADMIN';
     const affiliation = utilisateur_actif.affiliations.find(
       (a) => a.id_etablissement === etablissement_actif.id
     );
     if (affiliation && ROLES[affiliation.id_role]) return affiliation.id_role;
+    if (utilisateur_actif.est_super_admin_plateforme) return 'SUPER_ADMIN';
     return utilisateur_actif.affiliations[0]?.id_role ?? 'AUDITEUR';
-  }, [utilisateur_actif, etablissement_actif.id, surcharge_role]);
+  }, [utilisateur_actif, etablissement_actif.id]);
 
   const ajouter_toast = useCallback((toast: Omit<MessageToast, 'id'>) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -1509,10 +1626,23 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const a_permission = useCallback(
     (id_permission: IdentifiantPermission): boolean => {
-      const permissions = obtenir_permissions_role(etablissement_actif.id, id_role_actif);
+      const est_admin_plateforme = Boolean(utilisateur_actif.est_super_admin_plateforme);
+      const affiliation = utilisateur_actif.affiliations.find(
+        (a) => a.id_etablissement === etablissement_actif.id
+      );
+      if (est_admin_plateforme && id_permission === 'plateforme:gerer') {
+        return true;
+      }
+      if (!affiliation) {
+        return (
+          est_admin_plateforme &&
+          id_permission === 'profil:voir'
+        );
+      }
+      const permissions = obtenir_permissions_role(etablissement_actif.id, affiliation.id_role);
       return permissions.includes(id_permission);
     },
-    [obtenir_permissions_role, etablissement_actif.id, id_role_actif]
+    [obtenir_permissions_role, etablissement_actif.id, utilisateur_actif]
   );
 
   const basculer_permission_role = useCallback(
@@ -1607,9 +1737,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     (id_etablissement: string) => {
       const cible = etat.etablissements.find((e) => e.id === id_etablissement);
       if (!cible) return;
-      const est_autorise =
-        utilisateur_actif.est_super_admin_plateforme ||
-        utilisateur_actif.affiliations.some((a) => a.id_etablissement === id_etablissement);
+      const est_autorise = utilisateur_actif.affiliations.some(
+        (a) => a.id_etablissement === id_etablissement
+      );
       if (!est_autorise) {
         ajouter_toast({
           titre: 'Accès refusé',
@@ -1621,7 +1751,6 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       const appliquer_changement = () => {
         definir_id_etablissement_actif(id_etablissement);
         definir_id_apprenant_selectionne(null);
-        definir_surcharge_role(null);
         definir_devise_active(cible.devise_defaut);
         const term_cible = obtenir_terminologie(cible.type);
         definir_route_active_interne((route_precedente) => {
@@ -1646,6 +1775,10 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
               (donnees_api as Record<string, unknown>)[cle] = lignes;
             })
           );
+          const notifications_api = await charger_collection_api(
+            id_etablissement,
+            'notifications'
+          );
           const [surcharges_permissions, utilisateurs_api, journaux_audit_api] =
             await Promise.all([
             charger_surcharges_permissions_api(id_etablissement),
@@ -1669,6 +1802,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           instantane_api.current = nouvel_etat;
           definir_etat(nouvel_etat);
           appliquer_changement();
+          notifications_api_precedentes.current =
+            notifications_api as NotificationSysteme[];
+          definir_notifications(notifications_api as NotificationSysteme[]);
         })().catch((erreur: unknown) => {
           ajouter_toast({
             titre: 'Changement d’établissement impossible',
@@ -1731,8 +1867,16 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (SOURCE_API) {
+        const est_supervision_plateforme =
+          utilisateur_actif.est_super_admin_plateforme &&
+          !utilisateur_actif.affiliations.some(
+            (affiliation) => affiliation.id_etablissement === id_etablissement
+          );
+        const chemin = est_supervision_plateforme
+          ? `/plateforme/etablissements/${encodeURIComponent(id_etablissement)}/`
+          : `/etablissements/${encodeURIComponent(id_etablissement)}/`;
         void requeteApi<ConfigurationEtablissement>(
-          `/etablissements/${encodeURIComponent(id_etablissement)}/`,
+          chemin,
           { method: 'PATCH', body: modifications }
         )
           .then((etablissement_api) => {
@@ -1785,6 +1929,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     },
     [
       etat.etablissements,
+      utilisateur_actif,
       ajouter_entree_audit,
       utilisateur_actif.nom_complet,
       id_role_actif,
@@ -1800,8 +1945,16 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         cible.statut === 'SUSPENDU' ? 'ACTIF' : 'SUSPENDU';
 
       if (SOURCE_API) {
+        const est_supervision_plateforme =
+          utilisateur_actif.est_super_admin_plateforme &&
+          !utilisateur_actif.affiliations.some(
+            (affiliation) => affiliation.id_etablissement === id_etablissement
+          );
+        const chemin = est_supervision_plateforme
+          ? `/plateforme/etablissements/${encodeURIComponent(id_etablissement)}/`
+          : `/etablissements/${encodeURIComponent(id_etablissement)}/`;
         void requeteApi<ConfigurationEtablissement>(
-          `/etablissements/${encodeURIComponent(id_etablissement)}/`,
+          chemin,
           { method: 'PATCH', body: { statut: statut_suivant } }
         )
           .then((etablissement_api) => {
@@ -1869,6 +2022,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     },
     [
       etat.etablissements,
+      utilisateur_actif,
       ajouter_entree_audit,
       utilisateur_actif.nom_complet,
       id_role_actif,
@@ -1877,21 +2031,12 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const creer_etablissement_complet = useCallback(
-    (
+    async (
       etablissement: ConfigurationEtablissement,
       nouvelles_unites: UniteAcademique[],
       nouveaux_elements: ElementPedagogique[],
       compte_fondateur?: SaisieFondateurEtablissement
-    ): boolean => {
-      if (SOURCE_API) {
-        ajouter_toast({
-          titre: 'Création non disponible',
-          description:
-            'La création autonome n’est pas encore prise en charge par l’API sécurisée.',
-          variante: 'error',
-        });
-        return false;
-      }
+    ): Promise<boolean> => {
       if (!etablissement.nom.trim() || etablissement.nom.trim().length < 2) {
         ajouter_toast({
           titre: 'Nom d’établissement requis',
@@ -2030,13 +2175,16 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         utilisateur_actif.id.startsWith('usr-google-') &&
         courriel_normalise === utilisateur_actif.courriel.toLowerCase();
 
-      const est_fondateur_personnalise =
-        est_fondateur_google ||
-        (est_authentifie &&
-          mode_affichage === 'espace_travail' &&
-          !ecran_connexion_ouvert &&
+      const est_fondateur_personnalise = SOURCE_API
+        ? est_authentifie &&
           !utilisateur_actif.est_super_admin_plateforme &&
-          courriel_normalise === utilisateur_actif.courriel.toLowerCase());
+          courriel_normalise === utilisateur_actif.courriel.toLowerCase()
+        : est_fondateur_google ||
+          (est_authentifie &&
+            mode_affichage === 'espace_travail' &&
+            !ecran_connexion_ouvert &&
+            !utilisateur_actif.est_super_admin_plateforme &&
+            courriel_normalise === utilisateur_actif.courriel.toLowerCase());
 
       if (
         !est_fondateur_personnalise &&
@@ -2058,6 +2206,106 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           variante: 'error',
         });
         return false;
+      }
+
+      if (SOURCE_API) {
+        try {
+          const resultat = await requeteApi<{
+            etablissement: ConfigurationEtablissement;
+            unites: UniteAcademique[];
+            elements: ElementPedagogique[];
+            evenements_calendrier: EvenementCalendrierAcademique[];
+            profil: ProfilApi;
+          }>('/etablissements/', {
+            method: 'POST',
+            body: {
+              etablissement: etablissement_normalise,
+              unites: unites_normalisees,
+              elements: nouveaux_elements,
+              fondateur: {
+                nom_complet: nom_direction,
+                courriel: courriel_normalise,
+                telephone:
+                  compte_fondateur?.telephone.trim() || etablissement_normalise.telephone,
+                mot_de_passe: mot_de_passe_saisi,
+              },
+            },
+          });
+          installer_session_api();
+          const initiales_api = resultat.profil.nom_complet
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((mot) => mot[0]?.toUpperCase() ?? '')
+            .join('');
+          const utilisateur_api: CompteUtilisateur = {
+            id: resultat.profil.id,
+            nom_complet: resultat.profil.nom_complet,
+            courriel: resultat.profil.courriel,
+            telephone: resultat.profil.telephone,
+            mot_de_passe_demo: '',
+            initiales_avatar: initiales_api,
+            url_avatar: resultat.profil.url_avatar ?? undefined,
+            est_super_admin_plateforme: resultat.profil.est_super_admin_plateforme,
+            est_actif: resultat.profil.est_actif,
+            affiliations: resultat.profil.affiliations,
+            ids_apprenants_lies: resultat.profil.ids_apprenants_lies,
+          };
+          const donnees_api_vides: Partial<EtatPersiste> = {};
+          for (const { cle } of COLLECTIONS_API) {
+            (donnees_api_vides as Record<string, unknown>)[cle] = [];
+          }
+          const nouvel_etat: EtatPersiste = {
+            ...etat,
+            ...donnees_api_vides,
+            etablissements: [
+              ...etat.etablissements.filter((element) => element.id !== resultat.etablissement.id),
+              resultat.etablissement,
+            ],
+            utilisateurs: [
+              ...etat.utilisateurs.filter((element) => element.id !== utilisateur_api.id),
+              utilisateur_api,
+            ],
+            unites: resultat.unites,
+            elements: resultat.elements,
+            evenements_calendrier: resultat.evenements_calendrier,
+            journaux_audit: [],
+            file_hors_ligne: [],
+          };
+          instantane_api.current = nouvel_etat;
+          definir_etat(nouvel_etat);
+          if (!utilisateur_actif.est_super_admin_plateforme) {
+            definir_id_etablissement_actif(resultat.etablissement.id);
+            definir_devise_active(resultat.etablissement.devise_defaut);
+          }
+          definir_id_utilisateur_actif(resultat.profil.id);
+          definir_id_apprenant_selectionne(null);
+          definir_route_active_interne(
+            utilisateur_actif.est_super_admin_plateforme ? 'plateforme' : 'tableau_de_bord'
+          );
+          definir_est_authentifie(true);
+          definir_mode_affichage('espace_travail');
+          definir_ecran_connexion_ouvert(false);
+          ajouter_toast({
+            titre: `${resultat.etablissement.nom} initialisé`,
+            description:
+              unites_normalisees.length === 0
+                ? 'Espace 100% vierge et isolé prêt à être configuré.'
+                : `${unites_normalisees.length} unité(s), terminologie et espace administrateur isolé prêts.`,
+            variante: 'success',
+          });
+          return true;
+        } catch (erreur: unknown) {
+          ajouter_toast({
+            titre: 'Création impossible',
+            description:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Le serveur n’a pas pu créer cet établissement.',
+            variante: 'error',
+          });
+          return false;
+        }
       }
 
       const id_nouveau_fondateur = `usr-founder-${Date.now()}`;
@@ -2131,53 +2379,25 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
                   ],
                 };
               }
-              if (u.est_super_admin_plateforme) {
-                return {
-                  ...u,
-                  affiliations: [
-                    ...u.affiliations,
-                    {
-                      id_etablissement: etablissement.id,
-                      id_role: 'SUPER_ADMIN' as IdentifiantRole,
-                      fonction_locale: 'Super-admin Plateforme',
-                    },
-                  ],
-                };
-              }
               return u;
             })
           : [
-              ...precedent.utilisateurs.map((u) =>
-                u.est_super_admin_plateforme
-                  ? {
-                      ...u,
-                      affiliations: [
-                        ...u.affiliations,
-                        {
-                          id_etablissement: etablissement.id,
-                          id_role: 'SUPER_ADMIN' as IdentifiantRole,
-                          fonction_locale: 'Super-admin Plateforme',
-                        },
-                      ],
-                    }
-                  : u
-              ),
+              ...precedent.utilisateurs,
               utilisateur_fondateur,
             ],
       }));
 
-      definir_id_etablissement_actif(etablissement.id);
-      definir_devise_active(etablissement.devise_defaut);
+      if (!utilisateur_actif.est_super_admin_plateforme) {
+        definir_id_etablissement_actif(etablissement.id);
+        definir_devise_active(etablissement.devise_defaut);
+      }
       definir_id_apprenant_selectionne(null);
       if (doit_basculer_vers_fondateur) {
         definir_id_utilisateur_actif(id_nouveau_fondateur);
-        definir_surcharge_role('DIRECTEUR');
-      } else if (est_fondateur_personnalise) {
-        definir_surcharge_role('DIRECTEUR');
-      } else {
-        definir_surcharge_role(null);
       }
-      definir_route_active_interne('tableau_de_bord');
+      definir_route_active_interne(
+        utilisateur_actif.est_super_admin_plateforme ? 'plateforme' : 'tableau_de_bord'
+      );
       definir_est_authentifie(true);
       definir_mode_affichage('espace_travail');
       definir_ecran_connexion_ouvert(false);
@@ -2335,10 +2555,16 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       definir_notifications((precedent) =>
         precedent.filter((n) => n.id_etablissement !== id_etablissement)
       );
+      if (notifications_api_precedentes.current) {
+        notifications_api_precedentes.current =
+          notifications_api_precedentes.current.filter(
+            (notification) => notification.id_etablissement !== id_etablissement
+          );
+      }
 
       if (id_etablissement_actif === id_etablissement && etablissement_repli) {
         definir_id_apprenant_selectionne(null);
-        definir_surcharge_role(null);
+
         if (utilisateur_actif.est_super_admin_plateforme) {
           definir_id_etablissement_actif(etablissement_repli.id);
           definir_devise_active(etablissement_repli.devise_defaut);
@@ -2362,7 +2588,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
                 (u) =>
                   !u.est_super_admin_plateforme &&
                   u.affiliations.some((a) => a.id_etablissement === etablissement_repli.id)
-              ) ?? UTILISATEURS_INITIAUX[1];
+              ) ??
+              UTILISATEURS_INITIAUX[1] ??
+              UTILISATEUR_ANONYME;
             definir_id_etablissement_actif(etablissement_repli.id);
             definir_id_utilisateur_actif(utilisateur_repli.id);
             definir_devise_active(etablissement_repli.devise_defaut);
@@ -2404,35 +2632,12 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   const ouvrir_session_api = useCallback(
     async (
       id_etablissement_prefere?: string
-    ): Promise<{ ok: boolean; erreur?: string }> => {
-      const [profil, etablissements_api] = await Promise.all([
-        requeteApi<ProfilApi>('/auth/me/'),
-        requeteApi<ConfigurationEtablissement[]>('/etablissements/'),
-      ]);
-      const configuration_logo_api = await requeteApi<{ url_logo: string }>(
-        '/plateforme/configuration/'
-      );
+    ): Promise<{ ok: boolean; besoin_etablissement?: boolean; erreur?: string }> => {
+      const profil = await requeteApi<ProfilApi>('/auth/me/');
       if (!profil.est_actif) {
         return { ok: false, erreur: 'Ce compte utilisateur est désactivé.' };
       }
 
-      const etablissements_accessibles = profil.est_super_admin_plateforme
-        ? etablissements_api
-        : etablissements_api.filter((etablissement) =>
-            profil.affiliations.some(
-              (affiliation) => affiliation.id_etablissement === etablissement.id
-            )
-          );
-      const etablissement_api =
-        etablissements_accessibles.find(
-          (etablissement) => etablissement.id === id_etablissement_prefere
-        ) ??
-        etablissements_accessibles.find((etablissement) =>
-          profil.affiliations.some(
-            (affiliation) => affiliation.id_etablissement === etablissement.id
-          )
-        ) ??
-        etablissements_accessibles[0];
       const utilisateur_source =
         etat.utilisateurs.find((utilisateur) => utilisateur.id === profil.id) ??
         UTILISATEURS_INITIAUX.find((utilisateur) => utilisateur.id === profil.id);
@@ -2457,25 +2662,99 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         courriel: profil.courriel,
         telephone: profil.telephone,
         url_avatar: profil.url_avatar ?? undefined,
+        biographie: profil.biographie,
+        poste: profil.poste,
+        departement: profil.departement,
+        ville: profil.ville,
+        pays: profil.pays,
+        url_linkedin: profil.url_linkedin,
+        langue_preferee: profil.langue_preferee,
+        preferences_notifications: profil.preferences_notifications,
+        double_facteur_actif: profil.double_facteur_actif,
         affiliations: profil.affiliations,
         est_super_admin_plateforme: profil.est_super_admin_plateforme,
         est_actif: profil.est_actif,
+        doit_changer_mot_de_passe: profil.doit_changer_mot_de_passe,
         mot_de_passe_demo: '',
       };
+
+      if (profil.doit_changer_mot_de_passe) {
+        notifications_api_precedentes.current = [];
+        definir_notifications([]);
+        const donnees_api_vides: Partial<EtatPersiste> = {};
+        for (const { cle } of COLLECTIONS_API) {
+          (donnees_api_vides as Record<string, unknown>)[cle] = [];
+        }
+        const nouvel_etat: EtatPersiste = {
+          ...etat,
+          ...donnees_api_vides,
+          etablissements: [],
+          utilisateurs: [utilisateur_api],
+          journaux_audit: [],
+          file_hors_ligne: [],
+          surcharges_permissions: {},
+        };
+        instantane_api.current = nouvel_etat;
+        definir_etat(nouvel_etat);
+        definir_id_utilisateur_actif(profil.id);
+        definir_id_apprenant_selectionne(null);
+        definir_id_etablissement_actif('');
+        definir_route_active_interne('tableau_de_bord');
+        definir_est_authentifie(true);
+        definir_mode_affichage('espace_travail');
+        definir_ecran_connexion_ouvert(false);
+        definir_modale_nouvel_etablissement_ouverte(false);
+        ajouter_toast({
+          titre: 'Changement de mot de passe requis',
+          description:
+            'Votre mot de passe doit être remplacé avant de pouvoir accéder à l’espace de travail.',
+          variante: 'info',
+        });
+        return { ok: true };
+      }
+
+      const [etablissements_affilies_api, etablissements_plateforme_api, configuration_logo_api] =
+        await Promise.all([
+          requeteApi<ConfigurationEtablissement[]>('/etablissements/'),
+          profil.est_super_admin_plateforme
+            ? requeteApi<ConfigurationEtablissement[]>('/plateforme/etablissements/')
+            : Promise.resolve([]),
+          requeteApi<{ url_logo: string }>('/plateforme/configuration/'),
+        ]);
+      const etablissements_api = profil.est_super_admin_plateforme
+        ? etablissements_plateforme_api
+        : etablissements_affilies_api;
+      const etablissements_accessibles = etablissements_affilies_api.filter((etablissement) =>
+        profil.affiliations.some(
+          (affiliation) => affiliation.id_etablissement === etablissement.id
+        )
+      );
+      const etablissement_api =
+        etablissements_accessibles.find(
+          (etablissement) => etablissement.id === id_etablissement_prefere
+        ) ??
+        etablissements_accessibles.find((etablissement) =>
+          profil.affiliations.some(
+            (affiliation) => affiliation.id_etablissement === etablissement.id
+          )
+        ) ??
+        etablissements_accessibles[0];
       if (!etablissement_api) {
+        notifications_api_precedentes.current = [];
+        definir_notifications([]);
+        const donnees_api_vides: Partial<EtatPersiste> = {};
+        for (const { cle } of COLLECTIONS_API) {
+          (donnees_api_vides as Record<string, unknown>)[cle] = [];
+        }
         if (profil.est_super_admin_plateforme) {
-          const donnees_api: Partial<EtatPersiste> = {};
-          for (const { cle } of COLLECTIONS_API) {
-            (donnees_api as Record<string, unknown>)[cle] = [];
-          }
           const nouvel_etat: EtatPersiste = {
             ...etat,
-            ...donnees_api,
+            ...donnees_api_vides,
             configuration_plateforme: {
               ...etat.configuration_plateforme,
               url_logo: configuration_logo_api.url_logo || undefined,
             },
-            etablissements: [],
+            etablissements: etablissements_api,
             utilisateurs: [utilisateur_api],
             journaux_audit: [],
             file_hors_ligne: [],
@@ -2484,7 +2763,6 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           instantane_api.current = nouvel_etat;
           definir_etat(nouvel_etat);
           definir_id_utilisateur_actif(profil.id);
-          definir_surcharge_role(null);
           definir_id_apprenant_selectionne(null);
           definir_id_etablissement_actif('');
           definir_route_active_interne('plateforme');
@@ -2498,10 +2776,36 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           });
           return { ok: true };
         }
-        return {
-          ok: false,
-          erreur: 'Aucun établissement autorisé n’est associé à ce compte.',
+        const nouvel_etat: EtatPersiste = {
+          ...etat,
+          ...donnees_api_vides,
+          configuration_plateforme: {
+            ...etat.configuration_plateforme,
+            url_logo: configuration_logo_api.url_logo || undefined,
+          },
+          etablissements: [],
+          utilisateurs: [utilisateur_api],
+          journaux_audit: [],
+          file_hors_ligne: [],
+          surcharges_permissions: {},
         };
+        instantane_api.current = nouvel_etat;
+        definir_etat(nouvel_etat);
+        definir_id_utilisateur_actif(profil.id);
+        definir_id_apprenant_selectionne(null);
+        definir_id_etablissement_actif('');
+        definir_route_active_interne('tableau_de_bord');
+        definir_est_authentifie(true);
+        definir_mode_affichage('accueil');
+        definir_ecran_connexion_ouvert(false);
+        definir_modale_nouvel_etablissement_ouverte(true);
+        ajouter_toast({
+          titre: `Bienvenue ${profil.nom_complet}`,
+          description:
+            'Votre adresse Google est vérifiée. Créez votre établissement pour ouvrir votre espace.',
+          variante: 'info',
+        });
+        return { ok: true, besoin_etablissement: true };
       }
       const donnees_api: Partial<EtatPersiste> = {};
       await Promise.all(
@@ -2510,6 +2814,13 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           (donnees_api as Record<string, unknown>)[cle] = lignes;
         })
       );
+      const notifications_api = await charger_collection_api(
+        etablissement_api.id,
+        'notifications'
+      );
+      notifications_api_precedentes.current =
+        notifications_api as NotificationSysteme[];
+      definir_notifications(notifications_api as NotificationSysteme[]);
       const surcharges_permissions = await charger_surcharges_permissions_api(
         etablissement_api.id
       );
@@ -2539,18 +2850,17 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       instantane_api.current = nouvel_etat;
       definir_etat(nouvel_etat);
       definir_id_utilisateur_actif(profil.id);
-      definir_surcharge_role(null);
       definir_id_apprenant_selectionne(null);
       definir_id_etablissement_actif(etablissement_api.id);
       definir_devise_active(etablissement_api.devise_defaut);
       const affiliation = profil.affiliations.find(
         (element) => element.id_etablissement === etablissement_api.id
       );
-      const id_role: IdentifiantRole = profil.est_super_admin_plateforme
-        ? 'SUPER_ADMIN'
-        : affiliation?.id_role ?? 'AUDITEUR';
+      const id_role: IdentifiantRole =
+        affiliation?.id_role ??
+        (profil.est_super_admin_plateforme ? 'SUPER_ADMIN' : 'AUDITEUR');
       definir_route_active_interne(
-        profil.est_super_admin_plateforme && !id_etablissement_prefere
+      profil.est_super_admin_plateforme && !affiliation
           ? 'plateforme'
           : id_role === 'PARENT'
             ? 'portail_parent'
@@ -2652,67 +2962,89 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [ajouter_toast, est_authentifie, etat]);
 
-  const restauration_session_api_effectuee = useRef(false);
   useEffect(() => {
     if (
       !SOURCE_API ||
-      !sessionApiPresente() ||
-      restauration_session_api_effectuee.current
+      !est_authentifie ||
+      !id_etablissement_actif ||
+      !notifications_api_precedentes.current
     ) {
       return;
     }
-    restauration_session_api_effectuee.current = true;
-    void ouvrir_session_api().then((resultat) => {
-      if (!resultat.ok) {
-        ajouter_toast({
-          titre: 'Session API indisponible',
-          description: resultat.erreur ?? 'Veuillez vous reconnecter.',
-          variante: 'error',
-        });
+    const precedentes = notifications_api_precedentes.current;
+    const courantes = notifications.filter(
+      (notification) => notification.id_etablissement === id_etablissement_actif
+    );
+    const anciennes = new Map(precedentes.map((notification) => [notification.id, notification]));
+    const nouvelles = new Map(courantes.map((notification) => [notification.id, notification]));
+    const execution = file_synchronisation_api.current.then(async () => {
+      for (const [id, ancienne] of anciennes) {
+        if (nouvelles.has(id)) continue;
+        await requeteApi<null>(
+          `/etablissements/${encodeURIComponent(id_etablissement_actif)}/notifications/${encodeURIComponent(id)}/`,
+          { method: 'DELETE' }
+        );
       }
-    }).catch((erreur: unknown) => {
+      for (const [id, notification] of nouvelles) {
+        const ancienne = anciennes.get(id);
+        const base = `/etablissements/${encodeURIComponent(id_etablissement_actif)}/notifications/`;
+        if (!ancienne) {
+          await requeteApi<unknown>(base, { method: 'POST', body: notification });
+        } else if (ancienne.lue !== notification.lue) {
+          await requeteApi<unknown>(`${base}${encodeURIComponent(id)}/`, {
+            method: 'PATCH',
+            body: { lue: notification.lue },
+          });
+        }
+      }
+      notifications_api_precedentes.current = courantes;
+    });
+    file_synchronisation_api.current = execution.catch((erreur: unknown) => {
       ajouter_toast({
-        titre: 'Connexion au serveur impossible',
+        titre: 'Synchronisation des notifications impossible',
         description:
-          erreur instanceof Error ? erreur.message : 'Le serveur API est indisponible.',
+          erreur instanceof Error ? erreur.message : 'Une erreur empêche la synchronisation.',
         variante: 'error',
       });
     });
-  }, [ajouter_toast, ouvrir_session_api]);
+  }, [ajouter_toast, est_authentifie, id_etablissement_actif, notifications]);
 
-  const connecter_utilisateur = useCallback(
-    (id_utilisateur: string, id_etablissement_prefere?: string) => {
-      if (SOURCE_API) {
-        if (import.meta.env.PROD) {
+  const restauration_session_api_effectuee = useRef(false);
+  useEffect(() => {
+    if (!SOURCE_API || restauration_session_api_effectuee.current) {
+      return;
+    }
+    if (!sessionApiPresente()) {
+      definir_restauration_session_api_en_cours(false);
+      return;
+    }
+    restauration_session_api_effectuee.current = true;
+    void (async () => {
+      try {
+        await requeteApi<null>('/auth/token/refresh/', { method: 'POST' });
+        const resultat = await ouvrir_session_api();
+        if (!resultat.ok) {
           ajouter_toast({
-            titre: 'Accès démo indisponible',
-            description: 'Les accès de démonstration sont réservés au développement.',
+            titre: 'Session API indisponible',
+            description: resultat.erreur ?? 'Veuillez vous reconnecter.',
             variante: 'error',
           });
-          return;
         }
-        void (async () => {
-          try {
-            await connecterDemoApi(id_utilisateur, id_etablissement_prefere);
-            const resultat = await ouvrir_session_api(id_etablissement_prefere);
-            if (!resultat.ok) {
-              ajouter_toast({
-                titre: 'Connexion impossible',
-                description: resultat.erreur ?? 'Aucun établissement autorisé.',
-                variante: 'error',
-              });
-            }
-          } catch (erreur: unknown) {
-            ajouter_toast({
-              titre: 'Connexion impossible',
-              description:
-                erreur instanceof Error ? erreur.message : 'Le serveur API est indisponible.',
-              variante: 'error',
-            });
-          }
-        })();
-        return;
+      } catch (erreur: unknown) {
+        ajouter_toast({
+          titre: 'Connexion au serveur impossible',
+          description:
+            erreur instanceof Error ? erreur.message : 'Le serveur API est indisponible.',
+          variante: 'error',
+        });
+      } finally {
+        definir_restauration_session_api_en_cours(false);
       }
+    })();
+  }, [ajouter_toast, ouvrir_session_api]);
+
+  const ouvrir_session_utilisateur_locale = useCallback(
+    (id_utilisateur: string, id_etablissement_prefere?: string) => {
       const utilisateur =
         etat.utilisateurs.find((u) => u.id === id_utilisateur) ??
         UTILISATEURS_INITIAUX.find((u) => u.id === id_utilisateur);
@@ -2726,7 +3058,6 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
       definir_id_utilisateur_actif(utilisateur.id);
-      definir_surcharge_role(null);
       definir_id_apprenant_selectionne(null);
       const id_etablissement_suivant =
         id_etablissement_prefere &&
@@ -2784,7 +3115,6 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       etat.etablissements,
       etat.utilisateurs,
       ajouter_toast,
-      ouvrir_session_api,
     ]
   );
 
@@ -2794,10 +3124,26 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     erreur?: string;
   }> => {
     if (SOURCE_API) {
-      return {
-        ok: false,
-        erreur: 'La connexion Google n’est pas encore configurée avec le serveur API.',
-      };
+      try {
+        const identite_google = await connecter_avec_popup_google_api();
+        await connecterGoogleApi(identite_google.id_token);
+        const resultat = await ouvrir_session_api();
+        await deconnecter_firebase();
+        return {
+          ok: resultat.ok,
+          besoin_etablissement: resultat.besoin_etablissement,
+          erreur: resultat.erreur,
+        };
+      } catch (erreur: unknown) {
+        await deconnecter_firebase();
+        return {
+          ok: false,
+          erreur:
+            erreur instanceof Error
+              ? erreur.message
+              : 'Impossible de finaliser la connexion Google avec le serveur.',
+        };
+      }
     }
     try {
       const utilisateur_google = await connecter_avec_popup_google();
@@ -2827,7 +3173,6 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (!existant.est_super_admin_plateforme && existant.affiliations.length === 0) {
           definir_id_utilisateur_actif(existant.id);
-          definir_surcharge_role(null);
           definir_id_apprenant_selectionne(null);
           definir_ecran_connexion_ouvert(false);
           definir_est_authentifie(true);
@@ -2842,7 +3187,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           return { ok: true, besoin_etablissement: true };
         }
 
-        connecter_utilisateur(existant.id);
+        ouvrir_session_utilisateur_locale(existant.id);
         return { ok: true };
       }
 
@@ -2872,7 +3217,6 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         utilisateurs: [...precedent.utilisateurs, nouvel_utilisateur],
       }));
       definir_id_utilisateur_actif(nouvel_utilisateur.id);
-      definir_surcharge_role(null);
       definir_id_apprenant_selectionne(null);
       definir_ecran_connexion_ouvert(false);
       definir_est_authentifie(true);
@@ -2906,19 +3250,14 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
             : 'Impossible de finaliser la connexion avec Google.',
       };
     }
-  }, [etat.utilisateurs, connecter_utilisateur, ajouter_toast]);
+  }, [etat.utilisateurs, ouvrir_session_utilisateur_locale, ajouter_toast]);
 
   const trouver_utilisateur_par_identifiant = useCallback(
     (identifiant: string): CompteUtilisateur | undefined => {
       const brut = identifiant.trim().toLowerCase();
       if (!brut) return undefined;
       return etat.utilisateurs.find((u) => {
-        return (
-          u.courriel.toLowerCase() === brut ||
-          u.telephone.toLowerCase() === brut ||
-          (u.est_super_admin_plateforme &&
-            (brut === 'superuser' || brut === 'superadmin' || brut === 'admin'))
-        );
+        return u.courriel.toLowerCase() === brut || u.telephone.toLowerCase() === brut;
       });
     },
     [etat.utilisateurs]
@@ -2928,36 +3267,21 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     (identifiant: string, mot_de_passe: string): { ok: boolean; erreur?: string } => {
       const trouve = trouver_utilisateur_par_identifiant(identifiant);
       if (!trouve) {
-        return {
-          ok: false,
-          erreur:
-            'Aucun compte trouvé pour cet identifiant. Vérifiez le courriel, le téléphone ou utilisez « superuser ».',
-        };
+        return { ok: false, erreur: 'Identifiants incorrects.' };
       }
 
       if (trouve.est_actif === false) {
-        return {
-          ok: false,
-          erreur:
-            'Ce compte utilisateur est actuellement suspendu par un administrateur. Contactez la direction.',
-        };
+        return { ok: false, erreur: 'Identifiants incorrects.' };
       }
 
       if (trouve.verrouille_jusqua) {
         const horodatage_verrou = new Date(trouve.verrouille_jusqua).getTime();
         if (horodatage_verrou > Date.now()) {
-          const minutes_restantes = Math.max(
-            1,
-            Math.ceil((horodatage_verrou - Date.now()) / 60000)
-          );
-          return {
-            ok: false,
-            erreur: `Compte temporairement verrouillé suite à 5 échecs. Réessayez dans ${minutes_restantes} min ou utilisez « Mot de passe oublié ? ».`,
-          };
+          return { ok: false, erreur: 'Identifiants incorrects.' };
         }
       }
 
-      if (trouve.mot_de_passe_demo !== mot_de_passe) {
+      if (!mot_de_passe || trouve.mot_de_passe_demo !== mot_de_passe) {
         const tentatives_suivantes = (trouve.tentatives_connexion_echouees ?? 0) + 1;
         const doit_verrouiller = tentatives_suivantes >= 5;
         const verrouille_jusqua = doit_verrouiller
@@ -2986,18 +3310,10 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
             cible: trouve.courriel,
             categorie: 'AUTH',
           });
-          return {
-            ok: false,
-            erreur:
-              'Trop de tentatives infructueuses (5/5). Compte verrouillé 15 minutes — réinitialisez le mot de passe ou demandez le déblocage.',
-          };
+          return { ok: false, erreur: 'Identifiants incorrects.' };
         }
 
-        const restantes = 5 - tentatives_suivantes;
-        return {
-          ok: false,
-          erreur: `Mot de passe incorrect. Il reste ${restantes} tentative${restantes > 1 ? 's' : ''} avant verrouillage temporaire.`,
-        };
+        return { ok: false, erreur: 'Identifiants incorrects.' };
       }
 
       if ((trouve.tentatives_connexion_echouees ?? 0) > 0 || trouve.verrouille_jusqua) {
@@ -3011,10 +3327,15 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
       }
 
-      connecter_utilisateur(trouve.id);
+      ouvrir_session_utilisateur_locale(trouve.id);
       return { ok: true };
     },
-    [trouver_utilisateur_par_identifiant, id_etablissement_actif, ajouter_entree_audit, connecter_utilisateur]
+    [
+      trouver_utilisateur_par_identifiant,
+      id_etablissement_actif,
+      ajouter_entree_audit,
+      ouvrir_session_utilisateur_locale,
+    ]
   );
 
   const authentifier_par_identifiants_api = useCallback(
@@ -3225,6 +3546,13 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const deconnecter = useCallback(() => {
+    let erreur_effacement_brouillons: unknown;
+    try {
+      effacer_brouillons_admission();
+    } catch (erreur: unknown) {
+      erreur_effacement_brouillons = erreur;
+    }
+
     if (SOURCE_API) {
       void deconnecterApi().catch((erreur: unknown) => {
         ajouter_toast({
@@ -3239,7 +3567,6 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     } else {
       void deconnecter_firebase();
     }
-    definir_surcharge_role(null);
     definir_id_apprenant_selectionne(null);
     definir_ecran_connexion_ouvert(false);
     definir_est_authentifie(false);
@@ -3249,64 +3576,40 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       description: `Vous êtes revenu sur la page d’accueil ${etat.configuration_plateforme.nom_plateforme}.`,
       variante: 'info',
     });
+    if (erreur_effacement_brouillons) {
+      ajouter_toast({
+        titre: 'Brouillons non effacés',
+        description:
+          erreur_effacement_brouillons instanceof Error
+            ? erreur_effacement_brouillons.message
+            : 'Le stockage du navigateur n’a pas pu être nettoyé.',
+        variante: 'error',
+      });
+    }
   }, [ajouter_toast, etat.configuration_plateforme.nom_plateforme]);
 
-  const simuler_role_etablissement = useCallback(
-    (id_role: IdentifiantRole, options?: { rester_sur_vue?: boolean }) => {
-      if (id_role === 'SUPER_ADMIN' && !utilisateur_actif.est_super_admin_plateforme) {
-        ajouter_toast({
-          titre: 'Action non autorisée',
-          description: 'Le rôle Super-Administrateur Plateforme est réservé à l’opérateur SaaS.',
-          variante: 'error',
-        });
-        return;
-      }
-      definir_surcharge_role(id_role);
+  const definir_route_active = useCallback(
+    (route: IdentifiantRoute) => {
+      const est_super_admin_sans_affiliation =
+        utilisateur_actif.est_super_admin_plateforme &&
+        utilisateur_actif.affiliations.length === 0;
+      const route_securisee =
+        est_super_admin_sans_affiliation && !['plateforme', 'profil'].includes(route)
+          ? 'plateforme'
+          : route;
       definir_id_apprenant_selectionne(null);
-      if (!options?.rester_sur_vue) {
-        if (id_role === 'PARENT' && etablissement_actif.type === 'SCOLAIRE') {
-          definir_route_active_interne('portail_parent');
-        } else if (id_role === 'APPRENANT') {
-          definir_route_active_interne('portail_apprenant');
-        } else if (id_role === 'ENSEIGNANT') {
-          definir_route_active_interne('portail_enseignant');
-        } else if (id_role !== 'PARENT' && route_active === 'portail_parent') {
-          definir_route_active_interne('tableau_de_bord');
-        }
-      }
-      ajouter_entree_audit({
-        id_etablissement: etablissement_actif.id,
-        nom_acteur: utilisateur_actif.nom_complet,
-        role_acteur: ROLES[id_role].libelle,
-        action: `Basculement de simulation RBAC vers ${ROLES[id_role].libelle}`,
-        cible: etablissement_actif.nom_court,
-        categorie: 'RBAC',
-      });
-      ajouter_toast({
-        titre: `Vue simulée : ${ROLES[id_role].libelle_court}`,
-        description: 'Menus et permissions recalculés instantanément.',
-        variante: 'info',
-      });
+      definir_route_active_interne(route_securisee);
     },
-    [
-      etablissement_actif,
-      route_active,
-      ajouter_entree_audit,
-      utilisateur_actif.nom_complet,
-      utilisateur_actif.est_super_admin_plateforme,
-      ajouter_toast,
-    ]
+    [utilisateur_actif]
   );
 
-  const definir_route_active = useCallback((route: IdentifiantRoute) => {
-    definir_id_apprenant_selectionne(null);
-    definir_route_active_interne(route);
-  }, []);
-
   const ouvrir_dossier_apprenant = useCallback((id_apprenant: string) => {
+    if (!utilisateur_actif.affiliations.some((a) => a.id_etablissement === etablissement_actif.id)) {
+      return;
+    }
     definir_id_apprenant_selectionne(id_apprenant);
     definir_route_active_interne('apprenants');
-  }, []);
+  }, [utilisateur_actif.affiliations, etablissement_actif.id]);
 
   const fermer_dossier_apprenant = useCallback(() => {
     definir_id_apprenant_selectionne(null);
@@ -6101,7 +6404,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     definir_etat(obtenir_etat_persiste_defaut());
     definir_est_authentifie(false);
     definir_id_etablissement_actif(ETABLISSEMENTS_INITIAUX[0].id);
-    definir_id_utilisateur_actif(UTILISATEURS_INITIAUX[1].id);
+    definir_id_utilisateur_actif(UTILISATEURS_INITIAUX[1]?.id ?? '');
     definir_devise_active(ETABLISSEMENTS_INITIAUX[0].devise_defaut);
     definir_route_active_interne('tableau_de_bord');
     ajouter_toast({
@@ -6355,8 +6658,8 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
               utilisateurs: [nouvel_utilisateur, ...precedent.utilisateurs],
             }));
             ajouter_toast({
-              titre: `Compte créé : ${nouvel_utilisateur.nom_complet}`,
-              description: `Accès ${ROLES[saisie.id_role].libelle} activé.`,
+              titre: `Invitation envoyée : ${nouvel_utilisateur.nom_complet}`,
+              description: `Un courriel d’accès a été envoyé avec le rôle ${ROLES[saisie.id_role].libelle}.`,
               variante: 'success',
             });
           })
@@ -7212,27 +7515,36 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       };
 
-      if (
-        SOURCE_API &&
-        Object.prototype.hasOwnProperty.call(modifications, 'url_avatar')
-      ) {
+      if (SOURCE_API) {
         void requeteApi<ProfilApi>('/auth/profile/', {
           method: 'PATCH',
-          body: { url_avatar: modifications.url_avatar ?? null },
+          body: modifications,
         })
           .then((profil) =>
             appliquer_modifications({
               ...modifications,
+              nom_complet: profil.nom_complet,
+              courriel: profil.courriel,
+              telephone: profil.telephone,
               url_avatar: profil.url_avatar ?? undefined,
+              biographie: profil.biographie,
+              poste: profil.poste,
+              departement: profil.departement,
+              ville: profil.ville,
+              pays: profil.pays,
+              url_linkedin: profil.url_linkedin,
+              langue_preferee: profil.langue_preferee,
+              preferences_notifications: profil.preferences_notifications,
+              double_facteur_actif: profil.double_facteur_actif,
             })
           )
           .catch((erreur: unknown) => {
             ajouter_toast({
-              titre: 'Photo non enregistrée',
+              titre: 'Profil non enregistré',
               description:
                 erreur instanceof Error
                   ? erreur.message
-                  : 'Le serveur n’a pas pu enregistrer la photo de profil.',
+                  : 'Le serveur n’a pas pu enregistrer les modifications du profil.',
               variante: 'error',
             });
           });
@@ -7322,8 +7634,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const finaliser_changement_mot_de_passe_obligatoire = useCallback(
-    (nouveau_mot_de_passe: string): { ok: boolean; erreur?: string } => {
-      if (nouveau_mot_de_passe.trim() === utilisateur_actif.mot_de_passe_demo) {
+    async (nouveau_mot_de_passe: string): Promise<{ ok: boolean; erreur?: string }> => {
+      const mot_de_passe = nouveau_mot_de_passe.trim();
+      if (!SOURCE_API && mot_de_passe === utilisateur_actif.mot_de_passe_demo) {
         return {
           ok: false,
           erreur: 'Choisissez un nouveau mot de passe différent du mot de passe temporaire.',
@@ -7333,6 +7646,22 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       if (!politique.valide) {
         return { ok: false, erreur: politique.message };
       }
+      if (SOURCE_API) {
+        try {
+          await requeteApi('/auth/password/change/', {
+            method: 'POST',
+            body: { nouveau_mot_de_passe: mot_de_passe },
+          });
+        } catch (erreur: unknown) {
+          return {
+            ok: false,
+            erreur:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Le serveur n’a pas pu enregistrer votre nouveau mot de passe.',
+          };
+        }
+      }
       const aujourdhui = new Date().toISOString().slice(0, 10);
       definir_etat((precedent) => ({
         ...precedent,
@@ -7340,13 +7669,35 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           u.id === utilisateur_actif.id
             ? {
                 ...u,
-                mot_de_passe_demo: nouveau_mot_de_passe.trim(),
+                mot_de_passe_demo: SOURCE_API ? '' : mot_de_passe,
                 mot_de_passe_mis_a_jour_le: aujourdhui,
                 doit_changer_mot_de_passe: false,
               }
             : u
         ),
       }));
+      if (SOURCE_API) {
+        try {
+          const resultat_session = await ouvrir_session_api();
+          if (!resultat_session.ok) {
+            throw new Error(
+              resultat_session.erreur ??
+                'Le mot de passe est enregistré, mais la session n’a pas pu être rechargée.'
+            );
+          }
+        } catch (erreur: unknown) {
+          deconnecter();
+          ajouter_toast({
+            titre: 'Mot de passe enregistré',
+            description:
+              erreur instanceof Error
+                ? `Reconnectez-vous pour charger votre espace : ${erreur.message}`
+                : 'Reconnectez-vous pour charger votre espace.',
+            variante: 'warning',
+          });
+          return { ok: true };
+        }
+      }
       ajouter_entree_audit({
         id_etablissement: etablissement_actif.id,
         nom_acteur: utilisateur_actif.nom_complet,
@@ -7369,6 +7720,8 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       utilisateur_actif.courriel,
       etablissement_actif.id,
       id_role_actif,
+      ouvrir_session_api,
+      deconnecter,
       ajouter_entree_audit,
       ajouter_toast,
     ]
@@ -8073,11 +8426,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   const utilisateurs_etablissement = useMemo(
     () =>
       etat.utilisateurs.filter((u) =>
-        u.est_super_admin_plateforme
-          ? utilisateur_actif.est_super_admin_plateforme
-          : u.affiliations.some((a) => a.id_etablissement === etablissement_actif.id)
+        u.affiliations.some((a) => a.id_etablissement === etablissement_actif.id)
       ),
-    [etat.utilisateurs, etablissement_actif.id, utilisateur_actif.est_super_admin_plateforme]
+    [etat.utilisateurs, etablissement_actif.id]
   );
   const actualites_etablissement = useMemo(
     () => etat.articles_actualites.filter((n) => n.id_etablissement === etablissement_actif.id),
@@ -8119,13 +8470,31 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     () => notifications.filter((n) => n.id_etablissement === etablissement_actif.id),
     [notifications, etablissement_actif.id]
   );
+  const ids_etablissements_affilies = useMemo(
+    () => new Set(etablissements_affilies.map((etablissement) => etablissement.id)),
+    [etablissements_affilies]
+  );
+  const tous_les_apprenants = useMemo(
+    () => etat.apprenants.filter((apprenant) => ids_etablissements_affilies.has(apprenant.id_etablissement)),
+    [etat.apprenants, ids_etablissements_affilies]
+  );
+  const tous_les_paiements = useMemo(
+    () => etat.paiements.filter((paiement) => ids_etablissements_affilies.has(paiement.id_etablissement)),
+    [etat.paiements, ids_etablissements_affilies]
+  );
+  const tous_les_documents = useMemo(
+    () => etat.documents.filter((document) => ids_etablissements_affilies.has(document.id_etablissement)),
+    [etat.documents, ids_etablissements_affilies]
+  );
 
   const valeur: ValeurContexteErp = {
     configuration_plateforme: etat.configuration_plateforme,
     mode_affichage,
     definir_mode_affichage,
     est_authentifie,
+    restauration_session_api_en_cours,
     etablissements: etat.etablissements,
+    etablissements_affilies,
     etablissements_accessibles,
     utilisateurs: etat.utilisateurs,
     etablissement_actif,
@@ -8183,9 +8552,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     badges_etablissement,
     journaux_import_etablissement,
     demandes_conge_etablissement,
-    tous_les_apprenants: etat.apprenants,
-    tous_les_paiements: etat.paiements,
-    tous_les_documents: etat.documents,
+    tous_les_apprenants,
+    tous_les_paiements,
+    tous_les_documents,
     journaux_audit: journaux_audit_etablissement,
     file_hors_ligne: file_hors_ligne_etablissement,
     changer_etablissement,
@@ -8193,14 +8562,12 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     basculer_statut_etablissement,
     creer_etablissement_complet,
     supprimer_etablissement,
-    connecter_utilisateur,
     connecter_avec_google,
     authentifier_par_identifiants,
     authentifier_par_identifiants_api,
     demander_reinitialisation_mot_de_passe,
     confirmer_reinitialisation_mot_de_passe,
     deconnecter,
-    simuler_role_etablissement,
     definir_route_active,
     ouvrir_dossier_apprenant,
     fermer_dossier_apprenant,

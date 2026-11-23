@@ -26,7 +26,7 @@ Application de gestion éducative multi-établissements : React, TypeScript, Vit
    $env:DJANGO_CSRF_TRUSTED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
    ```
 
-   Ces variables sont propres au terminal et peuvent aussi être placées dans un fichier local `backend\.env` ignoré par Git. `VITE_SOURCE_DONNEES=local` conserve le mode local; `VITE_SOURCE_DONNEES=api` active l’authentification Django, le chargement des collections autorisées et leur synchronisation CRUD.
+   Ces variables sont propres au terminal et peuvent aussi être placées dans le fichier local `.env` à la racine, ignoré par Git. `VITE_SOURCE_DONNEES=local` conserve le mode local; `VITE_SOURCE_DONNEES=api` active l’authentification Django, le chargement des collections autorisées et leur synchronisation CRUD.
 
 3. Utiliser l’environnement Python `backend\venv` (le créer uniquement pour une nouvelle installation), installer les dépendances et appliquer les migrations :
 
@@ -53,25 +53,27 @@ L’interface est disponible à `http://localhost:3000/`, l’API à `http://127
 
 ## Variables d’environnement
 
-- Frontend : `VITE_API_URL` (par défaut `/api`) et `VITE_SOURCE_DONNEES` (`local` par défaut ou `api`). En production, le frontend force le mode API.
-- Backend local : `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS` et, si nécessaire, les variables `DB_*`.
+- Frontend : `VITE_API_URL` (par défaut `/api`), `VITE_SOURCE_DONNEES` (`local` par défaut ou `api`) et `VITE_DEMO_PUBLIQUE` (désactivée par défaut; n’affiche qu’un lien de demande de démonstration, jamais de compte ni de connexion rapide). En production, le frontend force le mode API et exclut les comptes d’exemple du bundle.
+- Backend local : `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS`, `DJANGO_GOOGLE_CLIENT_ID` pour la connexion Google et, si nécessaire, les variables `DB_*`.
 - Backend en production : `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`, hôtes/origines HTTPS explicites, PostgreSQL, cache partagé et SMTP; les détails sont ci-dessous.
+- Déploiement Compose : copiez `.env.example` vers `.env`, remplacez les valeurs `remplacer-*`, et configurez les variables `VITE_FIREBASE_*`/`DJANGO_GOOGLE_CLIENT_ID` uniquement si la connexion Google doit être activée. Sans configuration Firebase, le bouton Google reste désactivé avec un message explicite.
 - Ne copiez aucune clé privée, valeur `.env` ou configuration Firebase locale dans un commit. `firebase-applet-config.json` est ignoré par Git.
 
-En mode API et en développement, les accès démo sont désactivés par défaut. Pour les activer localement, définir `DJANGO_DEBUG=true` et `DJANGO_DEMO_LOGIN_ENABLED=true`; seuls les comptes chargés par `seed_demo` peuvent alors utiliser `/api/auth/demo/`. Ils n’ont aucun mot de passe utilisable. Ne pas activer ce mécanisme en production. Les connexions réelles utilisent courriel et mot de passe Django. La récupération de mot de passe utilise maintenant un code à usage unique envoyé par courriel via Django; en développement, le backend console et l’aperçu du code sont disponibles. La connexion Google et la création autonome d’établissement ne sont pas encore entièrement reliées à l’API.
+En mode API, les connexions démo sont désactivées par défaut. L’endpoint `/api/auth/demo/` répond 404 sauf si `DJANGO_DEBUG=true` et `DEMO_PUBLIQUE_ACTIVE=true`; il n’accepte que les comptes marqués `est_compte_demo`. Cette option n’est pas à définir en production et aucun écran frontend ne l’expose. Pour créer un compte de test local, utilisez `backend\venv\Scripts\python.exe backend\manage.py creer_compte_test <courriel> <ROLE>`; son mot de passe temporaire est affiché une seule fois et le changement est exigé à la première connexion. La création autonome d’établissement est limitée à trois tentatives par heure et crée son fondateur et ses premières données relationnelles dans une transaction. La connexion Google exige `DJANGO_GOOGLE_CLIENT_ID`; les jetons Google sont vérifiés par Django, et les comptes nouveaux n’ont pas de mot de passe local. Les sessions API du navigateur utilisent des cookies `HttpOnly`, avec protection CSRF; les JWT ne sont plus stockés dans `sessionStorage`. La récupération de mot de passe utilise un code à usage unique envoyé par courriel via Django; en développement, le backend console et l’aperçu du code sont disponibles.
 
-Le mode `local` authentifie uniquement les comptes des données locales; il ne recherche pas les utilisateurs Django. Pour se connecter avec un compte Django (dont le superutilisateur), régler `VITE_SOURCE_DONNEES=api` puis redémarrer Vite et lancer l’API. En mode API, l’identifiant `superuser`/`superadmin` est accepté s’il existe un seul superutilisateur actif; sinon, utiliser son adresse courriel. Un super-administrateur plateforme peut ouvrir sa session sans affiliation ni établissement; l’espace plateforme démarre alors avec les listes métier vides.
+Le mode `local` authentifie uniquement les comptes locaux disposant d’un mot de passe; il ne recherche pas les utilisateurs Django. Pour se connecter avec un compte Django, y compris un super-administrateur, régler `VITE_SOURCE_DONNEES=api`, démarrer l’API et utiliser son adresse courriel et son mot de passe. Aucun alias de connexion ni raccourci de rôle n’est accepté. Un super-administrateur plateforme authentifié est redirigé vers son espace protégé; les autres rôles ne disposent pas de la permission `plateforme:gerer`.
 
 ## Vérifications
 
 ```powershell
 npm run lint
 npm run build
+npm run test:public-build
 npm run backend:check
 npm run backend:test
 ```
 
-Le backend fournit JWT, profil courant, `/api/sante/`, OpenAPI, la liste des utilisateurs, la gestion des comptes, le journal d’audit limité par tenant, la mise à jour des paramètres d’établissement, un magasin de données JSON, la commande `seed_demo`, des endpoints protégés de téléversement/téléchargement (25 Mo maximum) et la gestion API des surcharges RBAC autorisées. Le client en mode API charge les collections autorisées, synchronise leurs créations, modifications et suppressions, et récupère les fichiers avec contrôle des droits côté serveur. Les permissions filtrent les tenants et les périmètres Parent/Apprenant/Enseignant. La migration vers les modèles métier relationnels, la fédération Google, la parité complète des services et les parcours de production de tous les rôles restent incomplets; voir les rapports de phase dans `docs/`.
+Le backend fournit une authentification JWT transportée par cookies `HttpOnly`, profil courant, `/api/sante/`, OpenAPI, la création autonome des établissements, la fédération Google vérifiée côté serveur, la liste et la gestion des comptes, le journal d’audit limité par tenant, un magasin de données JSON de compatibilité, la commande `seed_demo`, des endpoints protégés de téléversement/téléchargement (25 Mo maximum) et la gestion API des surcharges RBAC autorisées. Le client en mode API charge les collections autorisées, synchronise leurs créations, modifications et suppressions, et récupère les fichiers avec contrôle des droits côté serveur. Les permissions filtrent les tenants et les périmètres Parent/Apprenant/Enseignant. La suppression du stockage JSON et de Firebase, la parité E2E complète et les parcours de production de tous les rôles restent à prouver; voir les rapports de phase dans `docs/`.
 
 ## Documentation
 

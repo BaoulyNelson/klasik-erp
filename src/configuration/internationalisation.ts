@@ -47,7 +47,6 @@ export interface DictionnaireInterface {
   recherche_rapide: string;
   mes_etablissements: string;
   creer_etablissement: string;
-  simuler_role: string;
   mon_profil: string;
   changer_compte: string;
   deconnexion_accueil: string;
@@ -72,7 +71,6 @@ export const DICTIONNAIRE_I18N: Record<LangueSupportee, DictionnaireInterface> =
     recherche_rapide: 'Recherche rapide...',
     mes_etablissements: 'Mes établissements',
     creer_etablissement: 'Créer un établissement',
-    simuler_role: 'Simuler un rôle dans cet établissement',
     mon_profil: 'Mon profil professionnel & Photo',
     changer_compte: 'Changer de compte (Connexion)',
     deconnexion_accueil: 'Déconnexion (Accueil public)',
@@ -96,7 +94,6 @@ export const DICTIONNAIRE_I18N: Record<LangueSupportee, DictionnaireInterface> =
     recherche_rapide: 'Quick search...',
     mes_etablissements: 'My institutions',
     creer_etablissement: 'Create institution',
-    simuler_role: 'Simulate a role in this institution',
     mon_profil: 'My professional profile & Photo',
     changer_compte: 'Switch account (Sign in)',
     deconnexion_accueil: 'Sign out (Public home)',
@@ -146,7 +143,6 @@ export const DICTIONNAIRE_I18N: Record<LangueSupportee, DictionnaireInterface> =
     recherche_rapide: 'Búsqueda rápida...',
     mes_etablissements: 'Mis instituciones',
     creer_etablissement: 'Crear institución',
-    simuler_role: 'Simular un rol en esta institución',
     mon_profil: 'Mi perfil profesional y Foto',
     changer_compte: 'Cambiar de cuenta (Iniciar sesión)',
     deconnexion_accueil: 'Cerrar sesión (Inicio público)',
@@ -196,7 +192,6 @@ export const DICTIONNAIRE_I18N: Record<LangueSupportee, DictionnaireInterface> =
     recherche_rapide: 'Chèche rapid...',
     mes_etablissements: 'Lekòl ak enstitisyon mwen yo',
     creer_etablissement: 'Kreye yon nouvo enstitisyon',
-    simuler_role: 'Teste yon wòl nan enstitisyon sa a',
     mon_profil: 'Pwofil pwofesyonèl mwen & Foto',
     changer_compte: 'Chanje kont (Koneksyon)',
     deconnexion_accueil: 'Dekonekte (Paj akèy)',
@@ -248,6 +243,7 @@ export interface TextesAccueil {
   nav_modes: string;
   nav_fonctionnalites: string;
   nav_demo: string;
+  nav_contact: string;
   nav_tarifs: string;
   btn_connexion: string;
   btn_creer_etablissement: string;
@@ -259,7 +255,18 @@ export interface TextesAccueil {
   hero_sous_titre: string;
   hero_cta_principal: string;
   hero_cta_connexion: string;
-  hero_cta_superadmin: string;
+  apercu_illustratif: string;
+  demander_demo: string;
+  contact_titre: string;
+  contact_sous_titre: string;
+  contact_nom: string;
+  contact_courriel: string;
+  contact_sujet: string;
+  contact_message: string;
+  contact_envoyer: string;
+  contact_annuler: string;
+  contact_envoye: string;
+  contact_erreur: string;
   stat_etablissements: string;
   stat_pays: string;
   stat_pays_detail: string;
@@ -282,6 +289,7 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     nav_modes: '3 Modes',
     nav_fonctionnalites: 'Fonctionnalités',
     nav_demo: 'Démo',
+    nav_contact: 'Contact',
     nav_tarifs: 'Tarifs',
     btn_connexion: 'Se connecter',
     btn_creer_etablissement: 'Créer mon établissement',
@@ -293,9 +301,20 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     hero_sous_titre:
       'Déployez en quelques minutes votre espace 100 % isolé partout dans le monde : école professionnelle, établissement scolaire (primaire au lycée) ou université LMD. Devises, fuseaux horaires, barèmes, paiements et documents QR s’ajustent à votre pays.',
     hero_cta_principal: 'Créer mon établissement',
-    hero_cta_connexion: 'Connexion / Comptes démo',
-    hero_cta_superadmin: 'Console Super-Admin',
-    stat_etablissements: 'Établissements démo actifs',
+    hero_cta_connexion: 'Se connecter',
+    apercu_illustratif: 'Exemple illustratif',
+    demander_demo: 'Demander une démonstration',
+    contact_titre: 'Contacter notre équipe',
+    contact_sous_titre: 'Décrivez votre besoin, nous vous répondrons par courriel.',
+    contact_nom: 'Votre nom',
+    contact_courriel: 'Votre courriel',
+    contact_sujet: 'Sujet',
+    contact_message: 'Votre message',
+    contact_envoyer: 'Envoyer le message',
+    contact_annuler: 'Annuler',
+    contact_envoye: 'Votre message a été envoyé.',
+    contact_erreur: 'Le message n’a pas pu être envoyé. Veuillez réessayer plus tard.',
+    stat_etablissements: 'Modèles illustratifs',
     stat_pays: '15+ régions & mode Monde',
     stat_pays_detail: 'Europe, Amériques, Afrique, Caraïbes…',
     stat_roles: '12 rôles',
@@ -303,13 +322,12 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     stat_pwa: 'Mode hors-ligne PWA inclus',
     section_modes_titre: 'Un socle mondial unique, trois moteurs métier spécialisés',
     section_modes_sous_titre:
-      'Lancez une démonstration internationale selon votre secteur ou déployez votre propre établissement.',
+      'Découvrez les modèles adaptés à votre secteur ou déployez votre propre établissement.',
     section_fonctionnalites_titre: 'Conçu pour l’administration, la pédagogie et la finance mondiale',
     section_fonctionnalites_sous_titre:
       'Chaque établissement créé dispose d’une base isolée, de sa propre devise, de ses fuseaux horaires et de son équipe.',
-    section_demo_titre: 'Accès direct à l’environnement de démonstration',
-    section_demo_sous_titre:
-      'Testez immédiatement la plateforme selon votre profil ou créez votre propre établissement vierge.',
+    section_demo_titre: 'Demander une démonstration',
+    section_demo_sous_titre: 'Échangez avec notre équipe pour découvrir la plateforme.',
     section_tarifs_titre: 'Offres SaaS adaptées à chaque taille d’établissement',
     section_tarifs_sous_titre:
       'Déploiement immédiat partout dans le monde. Fuseaux horaires, langues (FR/EN/ES/HT) et 10 devises inclus.',
@@ -319,6 +337,7 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     nav_modes: '3 Modes',
     nav_fonctionnalites: 'Features',
     nav_demo: 'Live Demo',
+    nav_contact: 'Contact',
     nav_tarifs: 'Pricing',
     btn_connexion: 'Sign in',
     btn_creer_etablissement: 'Create institution',
@@ -330,9 +349,20 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     hero_sous_titre:
       'Launch a strictly isolated workspace anywhere in the world in minutes: vocational training center, K-12 school, or LMD/ECTS university. Local currencies, timezones, grading scales, global payments, and QR-verified records adjust to your country.',
     hero_cta_principal: 'Create my institution',
-    hero_cta_connexion: 'Sign in / Demo accounts',
-    hero_cta_superadmin: 'Super-Admin Console',
-    stat_etablissements: 'Active demo institutions',
+    hero_cta_connexion: 'Sign in',
+    apercu_illustratif: 'Illustrative example',
+    demander_demo: 'Request a demo',
+    contact_titre: 'Contact our team',
+    contact_sous_titre: 'Tell us what you need and we will reply by email.',
+    contact_nom: 'Your name',
+    contact_courriel: 'Your email',
+    contact_sujet: 'Subject',
+    contact_message: 'Your message',
+    contact_envoyer: 'Send message',
+    contact_annuler: 'Cancel',
+    contact_envoye: 'Your message was sent.',
+    contact_erreur: 'We could not send your message. Please try again later.',
+    stat_etablissements: 'Illustrative models',
     stat_pays: '15+ countries & Global mode',
     stat_pays_detail: 'Americas, Europe, Africa, Caribbean…',
     stat_roles: '12 roles',
@@ -340,13 +370,12 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     stat_pwa: 'Offline-ready PWA built-in',
     section_modes_titre: 'One global core, three specialized academic engines',
     section_modes_sous_titre:
-      'Explore an international demo by institution model or spin up your own isolated campus.',
+      'Explore institution models for your sector or create your own isolated campus.',
     section_fonctionnalites_titre: 'Built for global administration, academics, and multi-currency finance',
     section_fonctionnalites_sous_titre:
       'Every institution operates in an isolated tenant with its own currency, timezone, grading rules, and team.',
-    section_demo_titre: 'Instant access to the interactive demo environment',
-    section_demo_sous_titre:
-      'Test the platform by role right away or deploy a blank institution for your country.',
+    section_demo_titre: 'Request a demonstration',
+    section_demo_sous_titre: 'Talk to our team to discover the platform.',
     section_tarifs_titre: 'SaaS plans designed for every institution size',
     section_tarifs_sous_titre:
       'Instant global deployment. Multi-timezone, multilingual (EN/FR/ES/HT), and 10 currencies included.',
@@ -356,6 +385,7 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     nav_modes: '3 Modos',
     nav_fonctionnalites: 'Funciones',
     nav_demo: 'Demo',
+    nav_contact: 'Contacto',
     nav_tarifs: 'Planes',
     btn_connexion: 'Iniciar sesión',
     btn_creer_etablissement: 'Crear institución',
@@ -367,9 +397,20 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     hero_sous_titre:
       'Despliegue en minutos un entorno 100 % aislado en cualquier país del mundo: centro técnico, colegio escolar o universidad LMD/ECTS. Monedas, zonas horarias, escalas de notas y documentos QR se ajustan a su región.',
     hero_cta_principal: 'Crear mi institución',
-    hero_cta_connexion: 'Acceso / Cuentas demo',
-    hero_cta_superadmin: 'Consola Super-Admin',
-    stat_etablissements: 'Instituciones demo activas',
+    hero_cta_connexion: 'Iniciar sesión',
+    apercu_illustratif: 'Ejemplo ilustrativo',
+    demander_demo: 'Solicitar una demostración',
+    contact_titre: 'Contactar con nuestro equipo',
+    contact_sous_titre: 'Cuéntenos qué necesita y responderemos por correo electrónico.',
+    contact_nom: 'Su nombre',
+    contact_courriel: 'Su correo electrónico',
+    contact_sujet: 'Asunto',
+    contact_message: 'Su mensaje',
+    contact_envoyer: 'Enviar mensaje',
+    contact_annuler: 'Cancelar',
+    contact_envoye: 'Su mensaje ha sido enviado.',
+    contact_erreur: 'No se pudo enviar el mensaje. Inténtelo de nuevo más tarde.',
+    stat_etablissements: 'Modelos ilustrativos',
     stat_pays: '15+ países y modo Global',
     stat_pays_detail: 'América, Europa, África, Caribe…',
     stat_roles: '12 roles',
@@ -377,13 +418,12 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     stat_pwa: 'Modo sin conexión PWA incluido',
     section_modes_titre: 'Una base global única, tres motores académicos especializados',
     section_modes_sous_titre:
-      'Pruebe una demostración internacional según su modelo educativo o cree su propio campus.',
+      'Descubra modelos para su sector o cree su propio campus aislado.',
     section_fonctionnalites_titre: 'Diseñado para administración, pedagogía y finanzas multipaís',
     section_fonctionnalites_sous_titre:
       'Cada institución cuenta con base aislada, moneda local, zona horaria y equipo propio.',
-    section_demo_titre: 'Acceso directo al entorno de demostración',
-    section_demo_sous_titre:
-      'Pruebe la plataforma según su rol o despliegue su propia institución desde cero.',
+    section_demo_titre: 'Solicitar una demostración',
+    section_demo_sous_titre: 'Contacte con nuestro equipo para descubrir la plataforma.',
     section_tarifs_titre: 'Planes SaaS adaptados a cada institución',
     section_tarifs_sous_titre:
       'Despliegue inmediato en todo el mundo. Zonas horarias, idiomas (ES/FR/EN/HT) y 10 monedas incluidas.',
@@ -393,6 +433,7 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     nav_modes: '3 Mòd',
     nav_fonctionnalites: 'Fonksyonalite',
     nav_demo: 'Demo',
+    nav_contact: 'Kontak',
     nav_tarifs: 'Tarif SaaS',
     btn_connexion: 'Konekte',
     btn_creer_etablissement: 'Kreye enstitisyon mwen',
@@ -404,9 +445,20 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     hero_sous_titre:
       'Deplwaye nan kèk minit pwòp espas izole ou nenpòt kote nan mond lan : lekòl pwofesyonèl, lekòl klasik oswa inivèsite LMD. Lajan, fizo orè, echèl nòt ak dokiman QR adapte yo ak peyi ou.',
     hero_cta_principal: 'Kreye enstitisyon mwen',
-    hero_cta_connexion: 'Koneksyon / Kont demo',
-    hero_cta_superadmin: 'Konsòl Super-Admin',
-    stat_etablissements: 'Enstitisyon demo aktif',
+    hero_cta_connexion: 'Konekte',
+    apercu_illustratif: 'Egzanp ilistratif',
+    demander_demo: 'Mande yon demonstrasyon',
+    contact_titre: 'Kontakte ekip nou an',
+    contact_sous_titre: 'Di nou sa ou bezwen, n ap reponn ou pa imèl.',
+    contact_nom: 'Non ou',
+    contact_courriel: 'Imèl ou',
+    contact_sujet: 'Sijè',
+    contact_message: 'Mesaj ou',
+    contact_envoyer: 'Voye mesaj la',
+    contact_annuler: 'Anile',
+    contact_envoye: 'Mesaj ou a voye.',
+    contact_erreur: 'Nou pa t kapab voye mesaj la. Tanpri eseye ankò pita.',
+    stat_etablissements: 'Modèl ilistratif',
     stat_pays: '15+ peyi & mòd Mondyal',
     stat_pays_detail: 'Amerik, Ewòp, Afrik, Karayib…',
     stat_roles: '12 wòl',
@@ -414,12 +466,12 @@ export const DICTIONNAIRE_ACCUEIL: Record<LangueSupportee, TextesAccueil> = {
     stat_pwa: 'Mòd san entènèt PWA enkli',
     section_modes_titre: 'Yon sèl baz mondyal, twa motè espesyalize',
     section_modes_sous_titre:
-      'Teste yon demonstrasyon entènasyonal oswa kreye pwòp enstitisyon ou.',
+      'Dekouvri modèl ki adapte ak sektè ou oswa kreye pwòp enstitisyon ou.',
     section_fonctionnalites_titre: 'Fèt pou administrasyon, pedagoji ak finans entènasyonal',
     section_fonctionnalites_sous_titre:
       'Chak enstitisyon gen baz izole pa l, pwòp lajan l ak pwòp ekip li.',
-    section_demo_titre: 'Aksè dirèk nan anviwònman demonstrasyon an',
-    section_demo_sous_titre: 'Teste platfòm nan touswit oswa kreye pwòp enstitisyon ou.',
+    section_demo_titre: 'Mande yon demonstrasyon',
+    section_demo_sous_titre: 'Pale ak ekip nou an pou dekouvri platfòm nan.',
     section_tarifs_titre: 'Òf SaaS adapte pou chak gwosè enstitisyon',
     section_tarifs_sous_titre:
       'Deplwaman imedyat toupatou nan mond lan. Plizyè lang ak 10 lajan enkli.',

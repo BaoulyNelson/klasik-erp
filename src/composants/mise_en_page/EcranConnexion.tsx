@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
   Building2,
   Globe,
-  KeyRound,
   Lock,
   Mail,
   Plus,
@@ -15,9 +14,8 @@ import {
   LangueSupportee,
   OPTIONS_LANGUES,
 } from '../../configuration/internationalisation';
-import { ROLES } from '../../configuration/roles_permissions';
 import { utiliserErp } from '../../contexte/ContexteErp';
-import { BadgeTypeEtablissement } from '../interface/BadgeTypeEtablissement';
+import { auth_firebase, base_firestore } from '../../services/service_firebase';
 import { Bouton } from '../interface/Bouton';
 import { ChampMotDePasse } from '../interface/ChampMotDePasse';
 import { JaugeForceMotDePasse } from '../interface/JaugeForceMotDePasse';
@@ -34,18 +32,15 @@ const TEXTES_CONNEXION: Record<
     sous_titre_connexion: string;
     label_identifiant: string;
     label_mdp: string;
+    identifiants_incorrects: string;
     mdp_oublie: string;
     se_connecter: string;
     ou: string;
     google_chargement: string;
     google_continuer: string;
-    mdp_demo: string;
-    id_super: string;
+    google_non_configure: string;
     nouveau_sur: string;
     desc_nouveau: string;
-    titre_roles: string;
-    sous_titre_roles: string;
-    ouvrir_super: string;
   }
 > = {
   fr: {
@@ -54,24 +49,19 @@ const TEXTES_CONNEXION: Record<
     retour_espace: 'Revenir à l’espace de travail',
     badge_rbac: 'Accès sécurisé RBAC',
     titre_connexion: 'Connexion à votre espace',
-    sous_titre_connexion:
-      'Connectez-vous par courriel, identifiant (« superuser ») ou téléphone international.',
+    sous_titre_connexion: 'Connectez-vous avec les identifiants de votre compte.',
     label_identifiant: 'Courriel, téléphone ou identifiant',
     label_mdp: 'Mot de passe',
+    identifiants_incorrects: 'Identifiants incorrects.',
     mdp_oublie: 'Mot de passe oublié ?',
     se_connecter: 'Se connecter',
     ou: 'ou',
     google_chargement: 'Connexion avec Google...',
     google_continuer: 'Continuer avec Google',
-    mdp_demo: 'Accès démo réservé au développement.',
-    id_super: 'Identifiant rapide super-utilisateur :',
+    google_non_configure: 'Connexion Google indisponible : la configuration Firebase est absente.',
     nouveau_sur: 'Nouveau sur',
     desc_nouveau:
       'Déployez immédiatement votre propre école, centre de formation ou université en mode SaaS multi-établissement avec votre compte administrateur.',
-    titre_roles: 'Accès rapide par rôle & Super-Administrateur',
-    sous_titre_roles:
-      'Cliquez sur un établissement rattaché ou sur la console Super-Admin pour ouvrir la session correspondante.',
-    ouvrir_super: 'Ouvrir Console Super-Admin',
   },
   en: {
     creer_etab: 'Create my institution',
@@ -79,24 +69,19 @@ const TEXTES_CONNEXION: Record<
     retour_espace: 'Return to workspace',
     badge_rbac: 'RBAC Secure Access',
     titre_connexion: 'Sign in to your workspace',
-    sous_titre_connexion:
-      'Sign in using your email, username (“superuser”), or international phone number.',
+    sous_titre_connexion: 'Sign in using your account credentials.',
     label_identifiant: 'Email, phone, or username',
     label_mdp: 'Password',
+    identifiants_incorrects: 'Identifiants incorrects.',
     mdp_oublie: 'Forgot password?',
     se_connecter: 'Sign in',
     ou: 'or',
     google_chargement: 'Signing in with Google...',
     google_continuer: 'Continue with Google',
-    mdp_demo: 'Demo access is for development only.',
-    id_super: 'Quick superuser handle:',
+    google_non_configure: 'Google sign-in is unavailable because Firebase is not configured.',
     nouveau_sur: 'New to',
     desc_nouveau:
       'Deploy your own school, training center, or university instantly in multi-tenant SaaS mode with your administrator account.',
-    titre_roles: 'Quick Role Access & Super-Administrator',
-    sous_titre_roles:
-      'Click any attached institution or the Super-Admin Console to open that session.',
-    ouvrir_super: 'Open Super-Admin Console',
   },
   es: {
     creer_etab: 'Crear mi institución',
@@ -104,24 +89,19 @@ const TEXTES_CONNEXION: Record<
     retour_espace: 'Volver al espacio de trabajo',
     badge_rbac: 'Acceso seguro RBAC',
     titre_connexion: 'Iniciar sesión',
-    sous_titre_connexion:
-      'Acceda con su correo, usuario (« superuser ») o teléfono internacional.',
+    sous_titre_connexion: 'Inicie sesión con las credenciales de su cuenta.',
     label_identifiant: 'Correo, teléfono o usuario',
     label_mdp: 'Contraseña',
+    identifiants_incorrects: 'Identifiants incorrects.',
     mdp_oublie: '¿Olvidaste tu contraseña?',
     se_connecter: 'Entrar',
     ou: 'o',
     google_chargement: 'Conectando con Google...',
     google_continuer: 'Continuar con Google',
-    mdp_demo: 'Acceso demo solo para desarrollo.',
-    id_super: 'Acceso rápido superusuario:',
+    google_non_configure: 'Google no está disponible porque Firebase no está configurado.',
     nouveau_sur: '¿Nuevo en',
     desc_nouveau:
       'Implemente su propia escuela, centro profesional o universidad al instante en modo SaaS multisede.',
-    titre_roles: 'Acceso rápido por rol y Super-Administrador',
-    sous_titre_roles:
-      'Haga clic en una institución asociada o en la consola Super-Admin para iniciar sesión.',
-    ouvrir_super: 'Abrir Consola Super-Admin',
   },
   ht: {
     creer_etab: 'Kreye etablisman mwen',
@@ -129,24 +109,19 @@ const TEXTES_CONNEXION: Record<
     retour_espace: 'Retounen nan espas travay la',
     badge_rbac: 'Aksè sekirize RBAC',
     titre_connexion: 'Koneksyon nan espas ou',
-    sous_titre_connexion:
-      'Konekte ak imèl, idantifyan (« superuser ») oswa nimewo telefòn entènasyonal.',
+    sous_titre_connexion: 'Konekte ak enfòmasyon kont ou.',
     label_identifiant: 'Imèl, telefòn oswa idantifyan',
     label_mdp: 'Modpas',
+    identifiants_incorrects: 'Identifiants incorrects.',
     mdp_oublie: 'Ou bliye modpas ou?',
     se_connecter: 'Konekte',
     ou: 'oswa',
     google_chargement: 'Koneksyon ak Google...',
     google_continuer: 'Kontinye ak Google',
-    mdp_demo: 'Aksè demo a rezève pou devlopman.',
-    id_super: 'Idantifyan rapid sipè-itilizatè:',
+    google_non_configure: 'Google pa disponib paske Firebase pa konfigire.',
     nouveau_sur: 'Nouvo sou',
     desc_nouveau:
       'Deplwaye lekòl ou, sant fòmasyon oswa inivèsite ou touswit nan mòd SaaS milti-etablisman.',
-    titre_roles: 'Aksè rapid pa wòl ak Sipè-Administratè',
-    sous_titre_roles:
-      'Klike sou yon etablisman oswa sou konsòl Sipè-Admin pou louvri sesyon an.',
-    ouvrir_super: 'Louvri Konsòl Sipè-Admin',
   },
 };
 
@@ -158,14 +133,11 @@ export const EcranConnexion: React.FC = () => {
     definir_modale_nouvel_etablissement_ouverte,
     langue_active,
     definir_langue_active,
-    connecter_utilisateur,
     connecter_avec_google,
     authentifier_par_identifiants,
     authentifier_par_identifiants_api,
     demander_reinitialisation_mot_de_passe,
     confirmer_reinitialisation_mot_de_passe,
-    etablissements,
-    utilisateurs,
     utilisateur_actif,
     ajouter_toast,
     configuration_plateforme,
@@ -191,14 +163,24 @@ export const EcranConnexion: React.FC = () => {
   const [otp_demo_reinit, definir_otp_demo_reinit] = useState<string | null>(null);
   const [erreur_reinit, definir_erreur_reinit] = useState<string | null>(null);
   const source_api = import.meta.env.PROD || import.meta.env.VITE_SOURCE_DONNEES === 'api';
+  const google_disponible = Boolean(auth_firebase && (source_api || base_firestore));
+
+  useEffect(() => {
+    if (!ecran_connexion_ouvert) return;
+    definir_courriel_saisi('');
+    definir_mot_de_passe_saisi('');
+    definir_message_erreur(null);
+    definir_mode_reinitialisation('aucun');
+    definir_identifiant_reinit('');
+    definir_code_otp_reinit('');
+    definir_nouveau_mot_de_passe_reinit('');
+    definir_confirmation_mot_de_passe_reinit('');
+    definir_cible_masquee_reinit(null);
+    definir_otp_demo_reinit(null);
+    definir_erreur_reinit(null);
+  }, [ecran_connexion_ouvert]);
 
   if (!ecran_connexion_ouvert) return null;
-
-  const super_utilisateur =
-    utilisateurs.find((utilisateur) => utilisateur.est_super_admin_plateforme) ?? utilisateurs[0];
-  const autres_utilisateurs = utilisateurs.filter(
-    (utilisateur) => utilisateur.id !== super_utilisateur?.id
-  );
 
   const gerer_connexion_manuelle = async (evenement: React.FormEvent) => {
     evenement.preventDefault();
@@ -206,10 +188,12 @@ export const EcranConnexion: React.FC = () => {
       ? await authentifier_par_identifiants_api(courriel_saisi, mot_de_passe_saisi)
       : authentifier_par_identifiants(courriel_saisi, mot_de_passe_saisi);
     if (!resultat.ok) {
-      definir_message_erreur(resultat.erreur ?? 'Identifiants incorrects.');
+      definir_message_erreur(txt.identifiants_incorrects);
       return;
     }
     definir_message_erreur(null);
+    definir_courriel_saisi('');
+    definir_mot_de_passe_saisi('');
   };
 
   const gerer_connexion_google = async () => {
@@ -253,9 +237,9 @@ export const EcranConnexion: React.FC = () => {
       definir_erreur_reinit(resultat.erreur ?? 'Réinitialisation impossible.');
       return;
     }
-    definir_courriel_saisi(identifiant_reinit);
-    definir_mot_de_passe_saisi(nouveau_mot_de_passe_reinit);
     definir_mode_reinitialisation('aucun');
+    definir_courriel_saisi('');
+    definir_mot_de_passe_saisi('');
     definir_code_otp_reinit('');
     definir_nouveau_mot_de_passe_reinit('');
     definir_confirmation_mot_de_passe_reinit('');
@@ -263,12 +247,17 @@ export const EcranConnexion: React.FC = () => {
     definir_cible_masquee_reinit(null);
     definir_erreur_reinit(null);
     definir_message_erreur(null);
+    ajouter_toast({
+      titre: 'Mot de passe réinitialisé',
+      description: 'Saisissez vos identifiants pour vous connecter.',
+      variante: 'success',
+    });
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-950 overflow-y-auto">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
+      <div className="min-h-screen max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 flex flex-col">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-8">
           <div className="flex items-center gap-3">
             <LogoPlateforme configuration={configuration_plateforme} taille="moyen" />
             <div>
@@ -336,17 +325,16 @@ export const EcranConnexion: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Formulaire de connexion classique + création SaaS */}
-          <div className="lg:col-span-4 space-y-4">
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
+        <main className="flex-1 w-full flex items-center justify-center py-3 sm:py-5">
+          <div className="w-full max-w-[440px] space-y-4">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8">
               {mode_reinitialisation === 'aucun' ? (
                 <>
                   <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-xs font-semibold mb-2">
                     <ShieldCheck className="w-4 h-4" />
                     <span>{txt.badge_rbac}</span>
                   </div>
-                  <h2 className="text-xl font-display font-bold text-slate-900 dark:text-slate-100">
+                  <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-slate-100">
                     {txt.titre_connexion}
                   </h2>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -362,10 +350,12 @@ export const EcranConnexion: React.FC = () => {
                         <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
+                          required
+                          autoComplete="username"
                           value={courriel_saisi}
                           onChange={(evenement) => definir_courriel_saisi(evenement.target.value)}
-                          className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                          placeholder="superadmin@klasik-erp.org"
+                          className="w-full pl-9 pr-3 py-3 text-base rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                          placeholder={txt.label_identifiant}
                         />
                       </div>
                     </div>
@@ -388,12 +378,14 @@ export const EcranConnexion: React.FC = () => {
                         </button>
                       </div>
                       <ChampMotDePasse
+                        required
+                        autoComplete="current-password"
                         icone_gauche={<Lock className="w-4 h-4" />}
                         value={mot_de_passe_saisi}
                         onChange={(evenement) =>
                           definir_mot_de_passe_saisi(evenement.target.value)
                         }
-                        className="w-full py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                        className="w-full py-3 text-base rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                       />
                     </div>
 
@@ -417,7 +409,7 @@ export const EcranConnexion: React.FC = () => {
 
                   <button
                     type="button"
-                    disabled={chargement_google}
+                    disabled={chargement_google || !google_disponible}
                     onClick={gerer_connexion_google}
                     className="w-full min-h-[40px] px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm font-medium flex items-center justify-center gap-2.5 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shadow-2xs"
                   >
@@ -443,19 +435,12 @@ export const EcranConnexion: React.FC = () => {
                       {chargement_google ? txt.google_chargement : txt.google_continuer}
                     </span>
                   </button>
-
-                  <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                    <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
-                      <KeyRound className="w-3.5 h-3.5" />
-                      <span>{txt.mdp_demo}</span>
-                      <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                        DEV
-                      </code>
-                    </div>
-                    <p>
-                      {txt.id_super} <code className="font-mono">superuser</code>
+                  {!google_disponible && (
+                    <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+                      {txt.google_non_configure}
                     </p>
-                  </div>
+                  )}
+
                 </>
               ) : mode_reinitialisation === 'demande' ? (
                 <>
@@ -645,98 +630,7 @@ export const EcranConnexion: React.FC = () => {
               </div>
             )}
           </div>
-
-          {/* Grille des comptes de test par rôle */}
-          <div className="lg:col-span-8 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
-              <div>
-                <h3 className="text-base font-display font-bold text-slate-900 dark:text-slate-100">
-                  {txt.titre_roles}
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {txt.sous_titre_roles}
-                </p>
-              </div>
-            </div>
-
-            {super_utilisateur && (
-              <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/70 bg-indigo-50/40 dark:bg-indigo-950/25 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                      {super_utilisateur.nom_complet} — Super-Administrateur Plateforme (Superuser)
-                    </span>
-                  </div>
-                  <div className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1">
-                    {super_utilisateur.courriel} · Accès global à tous les établissements (
-                    {etablissements.length})
-                  </div>
-                </div>
-                <Bouton
-                  variante="principal"
-                  taille="sm"
-                  onClick={() => connecter_utilisateur(super_utilisateur.id)}
-                >
-                  <span>{txt.ouvrir_super}</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Bouton>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {autres_utilisateurs.map((utilisateur) => (
-                <div
-                  key={utilisateur.id}
-                  className="rounded-lg border border-slate-200 dark:border-slate-800 p-3.5 flex flex-col justify-between gap-2.5 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                        {utilisateur.nom_complet}
-                      </span>
-                      {utilisateur.affiliations.length > 1 && (
-                        <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
-                          Multi-établissements ({utilisateur.affiliations.length})
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                      {utilisateur.courriel} · {utilisateur.telephone}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5 pt-1">
-                    {utilisateur.affiliations.map((affiliation) => {
-                      const etab = etablissements.find(
-                        (element) => element.id === affiliation.id_etablissement
-                      );
-                      if (!etab) return null;
-                      return (
-                        <button
-                          key={`${utilisateur.id}-${affiliation.id_etablissement}`}
-                          type="button"
-                          onClick={() => connecter_utilisateur(utilisateur.id, etab.id)}
-                          className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/70 dark:hover:bg-slate-800 text-left transition-colors cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <BadgeTypeEtablissement type={etab.type} compact />
-                            <span className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
-                              {etab.nom_court}
-                            </span>
-                          </div>
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0">
-                            {(ROLES[affiliation.id_role] ?? ROLES.DIRECTEUR).libelle_court} →
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        </main>
       </div>
     </div>
   );

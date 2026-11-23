@@ -1,4 +1,12 @@
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+
+from etablissements.validators import (
+    PROFILS_TELEPHONE,
+    valider_fuseau_iana,
+    valider_telephone_pays,
+)
 
 
 class TypeEtablissement(models.TextChoices):
@@ -12,6 +20,13 @@ class Etablissement(models.Model):
     code = models.CharField(max_length=64, unique=True)
     nom = models.CharField(max_length=191)
     nom_court = models.CharField(max_length=100, blank=True)
+    proprietaire = models.ForeignKey(
+        "comptes.Utilisateur",
+        on_delete=models.SET_NULL,
+        related_name="etablissements_proprietaire",
+        null=True,
+        blank=True,
+    )
     type = models.CharField(max_length=16, choices=TypeEtablissement.choices)
     code_pays = models.CharField(max_length=16, default="INTL")
     nom_pays = models.CharField(max_length=100, blank=True, default="")
@@ -31,11 +46,18 @@ class Etablissement(models.Model):
     note_passage = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     couleur_accent = models.CharField(
         max_length=16,
-        choices=[("amber", "Ambre"), ("blue", "Bleu"), ("violet", "Violet")],
+        choices=[
+            ("blue", "Bleu"),
+            ("teal", "Turquoise"),
+            ("violet", "Violet"),
+            ("orange", "Orange"),
+            ("red", "Rouge"),
+            ("navy", "Bleu nuit"),
+        ],
         default="blue",
     )
     devise_etablissement = models.CharField(max_length=191, blank=True, default="")
-    url_logo = models.CharField(max_length=500, blank=True, default="")
+    url_logo = models.TextField(blank=True, default="")
     titre_direction = models.CharField(max_length=191, blank=True, default="")
     nom_direction = models.CharField(max_length=191, blank=True, default="")
     code_sceau = models.CharField(max_length=100, blank=True, default="")
@@ -63,6 +85,26 @@ class Etablissement(models.Model):
     cree_le = models.DateTimeField(auto_now_add=True)
     modifie_le = models.DateTimeField(auto_now=True)
 
+    def clean(self):
+        erreurs = {}
+        pays_valide = isinstance(self.code_pays, str) and (
+            self.code_pays == "INTL" or self.code_pays in PROFILS_TELEPHONE
+        )
+        if not pays_valide:
+            erreurs["code_pays"] = "Le code pays n’est pas pris en charge."
+        if self.telephone and pays_valide:
+            try:
+                valider_telephone_pays(self.code_pays, self.telephone)
+            except ValidationError as erreur:
+                erreurs.update(erreur.message_dict if hasattr(erreur, "message_dict") else {"telephone": erreur.messages})
+        if self.code_pays == "INTL" and pays_valide:
+            try:
+                valider_fuseau_iana(self.fuseau_horaire)
+            except ValidationError as erreur:
+                erreurs.update(erreur.message_dict if hasattr(erreur, "message_dict") else {"fuseau_horaire": erreur.messages})
+        if erreurs:
+            raise ValidationError(erreurs)
+
     class Meta:
         ordering = ["nom", "id"]
         verbose_name = "établissement"
@@ -70,6 +112,32 @@ class Etablissement(models.Model):
 
     def __str__(self) -> str:
         return f"{self.nom} ({self.code})"
+
+
+class HistoriqueAbonnementSaas(models.Model):
+    etablissement = models.ForeignKey(
+        Etablissement,
+        on_delete=models.CASCADE,
+        related_name="historique_abonnements_saas",
+    )
+    offre_saas = models.CharField(max_length=32)
+    statut_abonnement_saas = models.CharField(max_length=32, blank=True)
+    date_fin_essai_saas = models.CharField(max_length=32, blank=True)
+    reference_paiement_saas = models.CharField(max_length=191, blank=True)
+    acteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="modifications_abonnement_saas",
+        null=True,
+        blank=True,
+    )
+    acteur_nom = models.CharField(max_length=120, blank=True)
+    cree_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-cree_le", "-id"]
+        verbose_name = "historique d’abonnement SaaS"
+        verbose_name_plural = "historiques d’abonnement SaaS"
 
 
 class ConfigurationMarquePlateforme(models.Model):

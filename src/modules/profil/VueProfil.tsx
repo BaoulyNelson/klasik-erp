@@ -32,14 +32,21 @@ import { ModaleConfirmationAction } from '../../composants/interface/ModaleConfi
 import { obtenir_theme_etablissement } from '../../composants/interface/theme_etablissement';
 import { obtenir_libelle_role_etablissement } from '../../configuration/roles_permissions';
 import { utiliserErp } from '../../contexte/ContexteErp';
-import { CompteUtilisateur, PreferencesNotificationsUtilisateur } from '../../modeles/erp';
+import {
+  CompteUtilisateur,
+  CouleurAccentEtablissement,
+  PreferencesNotificationsUtilisateur,
+} from '../../modeles/erp';
 
-const DEGRADES_BANNIERE = {
-  amber:
-    'from-amber-500/20 via-orange-500/10 to-slate-100 dark:from-amber-900/35 dark:via-slate-900 dark:to-slate-900',
+const DEGRADES_BANNIERE: Record<CouleurAccentEtablissement, string> = {
   blue: 'from-blue-600/20 via-indigo-500/10 to-slate-100 dark:from-blue-900/35 dark:via-slate-900 dark:to-slate-900',
+  teal: 'from-teal-500/20 via-emerald-500/10 to-slate-100 dark:from-teal-900/35 dark:via-slate-900 dark:to-slate-900',
   violet:
     'from-violet-600/20 via-purple-500/10 to-slate-100 dark:from-violet-900/35 dark:via-slate-900 dark:to-slate-900',
+  orange:
+    'from-orange-500/20 via-amber-500/10 to-slate-100 dark:from-orange-900/35 dark:via-slate-900 dark:to-slate-900',
+  red: 'from-red-500/20 via-rose-500/10 to-slate-100 dark:from-red-900/35 dark:via-slate-900 dark:to-slate-900',
+  navy: 'from-indigo-700/20 via-blue-900/10 to-slate-100 dark:from-indigo-950/70 dark:via-slate-900 dark:to-slate-900',
 };
 
 function redimensionner_avatar(fichier: File): Promise<string> {
@@ -99,7 +106,7 @@ export const VueProfil: React.FC = () => {
     ajouter_toast,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const ref_fichier = useRef<HTMLInputElement>(null);
 
   const [onglet_actif, definir_onglet_actif] = useState<'infos' | 'securite' | 'etablissements'>(

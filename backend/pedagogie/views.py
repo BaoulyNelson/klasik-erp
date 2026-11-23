@@ -63,6 +63,10 @@ class PersonnelEnseignantViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("rh:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("rh:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("rh:gerer")
         serializer = self.get_serializer(data=request.data)
@@ -108,6 +112,10 @@ class NoteEvaluationViewSet(VueTenantMixin, viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         self.verifier_permission("pedagogie:voir")
         return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:voir")
+        return super().retrieve(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
         self.verifier_permission("pedagogie:noter")
@@ -176,6 +184,10 @@ class PresenceViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("pedagogie:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("pedagogie:appel")
         apprenant = Apprenant.objects.filter(pk=request.data.get("id_apprenant"), etablissement=self.etablissement_courant).first()
@@ -214,6 +226,10 @@ class CreneauViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("emplois_du_temps:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("emplois_du_temps:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("emplois_du_temps:gerer")
         unite = UniteAcademique.objects.filter(pk=request.data.get("id_unite"), etablissement=self.etablissement_courant).first()
@@ -225,6 +241,18 @@ class CreneauViewSet(VueTenantMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(etablissement=self.etablissement_courant, unite=unite, element=element, enseignant=enseignant)
         return Response(serializer.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("emplois_du_temps:gerer")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission("emplois_du_temps:gerer")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission("emplois_du_temps:gerer")
+        return super().destroy(request, *args, **kwargs)
 
 
 class EvenementCalendrierViewSet(VueTenantMixin, viewsets.ModelViewSet):
@@ -241,12 +269,28 @@ class EvenementCalendrierViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("emplois_du_temps:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("emplois_du_temps:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("emplois_du_temps:gerer")
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(etablissement=self.etablissement_courant)
         return Response(serializer.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("emplois_du_temps:gerer")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission("emplois_du_temps:gerer")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission("emplois_du_temps:gerer")
+        return super().destroy(request, *args, **kwargs)
 
 
 class CahierTextesViewSet(VueTenantMixin, viewsets.ModelViewSet):
@@ -263,6 +307,10 @@ class CahierTextesViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("pedagogie:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("pedagogie:noter")
         unite = UniteAcademique.objects.filter(pk=request.data.get("id_unite"), etablissement=self.etablissement_courant).first()
@@ -273,6 +321,18 @@ class CahierTextesViewSet(VueTenantMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(etablissement=self.etablissement_courant, unite=unite, element=element)
         return Response(serializer.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:noter")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:noter")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:noter")
+        return super().destroy(request, *args, **kwargs)
 
 
 class SoutenanceViewSet(VueTenantMixin, viewsets.ModelViewSet):
@@ -289,6 +349,10 @@ class SoutenanceViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("pedagogie:voir")
         return super().list(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:voir")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         self.verifier_permission("pedagogie:verrouiller")
         apprenant = Apprenant.objects.filter(pk=request.data.get("id_apprenant"), etablissement=self.etablissement_courant).first()
@@ -298,3 +362,15 @@ class SoutenanceViewSet(VueTenantMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(etablissement=self.etablissement_courant, apprenant=apprenant)
         return Response(serializer.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:verrouiller")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:verrouiller")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.verifier_permission("pedagogie:verrouiller")
+        return super().destroy(request, *args, **kwargs)

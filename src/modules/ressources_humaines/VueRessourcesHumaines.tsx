@@ -53,7 +53,7 @@ export const VueRessourcesHumaines: React.FC = () => {
   } = utiliserErp();
 
   const [onglet, definir_onglet] = useState<'paie' | 'personnel' | 'conges'>('paie');
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const peut_gerer_rh = a_permission('rh:gerer');
 
   // --- PAIE : Modale création / édition + Aperçu PDF + Suppression ---

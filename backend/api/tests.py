@@ -1,12 +1,18 @@
+import base64
+from importlib import import_module
 import json
 
+from django.apps import apps
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core import mail
+from django.db import connection
 from django.test import TestCase, override_settings
 from io import StringIO
+from types import SimpleNamespace
 from unittest.mock import patch
 from rest_framework.test import APIClient
 from comptes.models import (
@@ -15,7 +21,11 @@ from comptes.models import (
     SurchargePermissions,
 )
 from donnees.models import EnregistrementMetier, EntreeAuditApi, FichierTeleverse
-from etablissements.models import Etablissement
+from etablissements.models import (
+    ConfigurationMarquePlateforme,
+    Etablissement,
+    HistoriqueAbonnementSaas,
+)
 from scolarite.models import (
     Apprenant,
     ElementPedagogique,
@@ -27,8 +37,14 @@ from pedagogie.models import (
     NoteEvaluation,
     PersonnelEnseignant,
 )
-from finances.models import Depense, Paiement
-from communication.models import ArticleActualite, MessageCommunication, Notification
+from finances.models import BulletinPaie, DemandeConge, Depense, Paiement
+from communication.models import (
+    ArticleActualite,
+    FilDiscussionDirecte,
+    MessageCommunication,
+    MessageDirect,
+    Notification,
+)
 from documents.models import DocumentOfficiel
 from services_annexes.models import (
     AncienEtudiant,
@@ -36,6 +52,7 @@ from services_annexes.models import (
     EmpruntBibliotheque,
     IncidentDiscipline,
     LivreBibliotheque,
+    PartenaireStage,
     PretMateriel,
     VisiteInfirmerie,
 )
@@ -45,10 +62,17 @@ from securite.models import AttributionBadge, ConsentementRgpd, DemandeRgpd, Lot
 Utilisateur = get_user_model()
 
 
+def creer_client_api():
+    client = APIClient(enforce_csrf_checks=True)
+    reponse_csrf = client.get("/api/auth/csrf/")
+    client.credentials(HTTP_X_CSRFTOKEN=reponse_csrf.json()["csrf_token"])
+    return client
+
+
 class TestsAuthentificationApi(TestCase):
     def setUp(self):
         cache.clear()
-        self.client = APIClient()
+        self.client = creer_client_api()
         self.utilisateur = Utilisateur.objects.create_user(
             courriel="test@example.org",
             password="MotDePasseDeTest-2026",
@@ -216,17 +240,113 @@ class TestsAuthentificationApi(TestCase):
         )
 
         self.assertEqual(reponse_jetons.status_code, 200)
-        self.assertIn("access", reponse_jetons.json())
-        self.assertIn("refresh", reponse_jetons.json())
+        self.assertNotIn("access", reponse_jetons.json())
+        self.assertNotIn("refresh", reponse_jetons.json())
+        self.assertTrue(reponse_jetons.cookies["klasik_access"]["httponly"])
+        self.assertTrue(reponse_jetons.cookies["klasik_refresh"]["httponly"])
 
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {reponse_jetons.json()['access']}")
         reponse_profil = self.client.get("/api/auth/me/")
 
         self.assertEqual(reponse_profil.status_code, 200)
         self.assertEqual(reponse_profil.json()["courriel"], "test@example.org")
         self.assertEqual(reponse_profil.json()["role"], "ENSEIGNANT")
 
-    def test_connexion_superuser_par_identifiant_court(self):
+    def test_changement_obligatoire_est_limite_au_profil_et_au_changement_mdp(self):
+        self.utilisateur.profil = {"doit_changer_mot_de_passe": True}
+        self.utilisateur.save(update_fields=("profil",))
+        connexion = self.client.post(
+            "/api/auth/token/",
+            {"courriel": "test@example.org", "password": "MotDePasseDeTest-2026"},
+            format="json",
+        )
+        self.assertEqual(connexion.status_code, 200)
+
+        profil = self.client.get("/api/auth/me/")
+        acces_interdit = self.client.patch(
+            "/api/auth/profile/",
+            {"url_avatar": ""},
+            format="json",
+        )
+        lecture_etablissements_interdite = self.client.get("/api/etablissements/")
+        changement_identique = self.client.post(
+            "/api/auth/password/change/",
+            {"nouveau_mot_de_passe": "MotDePasseDeTest-2026"},
+            format="json",
+        )
+        self.assertEqual(profil.status_code, 200)
+        self.assertTrue(profil.json()["doit_changer_mot_de_passe"])
+        self.assertEqual(acces_interdit.status_code, 403)
+        self.assertEqual(lecture_etablissements_interdite.status_code, 403)
+        self.assertEqual(changement_identique.status_code, 400)
+
+        changement = self.client.post(
+            "/api/auth/password/change/",
+            {"nouveau_mot_de_passe": "NouveauMotDePasse-2026"},
+            format="json",
+        )
+        acces_retabli = self.client.patch(
+            "/api/auth/profile/",
+            {"url_avatar": ""},
+            format="json",
+        )
+        lecture_etablissements_retablie = self.client.get("/api/etablissements/")
+
+        self.assertEqual(changement.status_code, 200, changement.data)
+        self.assertEqual(acces_retabli.status_code, 200, acces_retabli.data)
+        self.assertEqual(lecture_etablissements_retablie.status_code, 200)
+        self.utilisateur.refresh_from_db()
+        self.assertTrue(self.utilisateur.check_password("NouveauMotDePasse-2026"))
+        self.assertFalse(self.utilisateur.profil["doit_changer_mot_de_passe"])
+
+    def test_connexion_est_refusee_sans_jeton_csrf(self):
+        client_sans_csrf = APIClient(enforce_csrf_checks=True)
+        reponse = client_sans_csrf.post(
+            "/api/auth/token/",
+            {"courriel": "test@example.org", "password": "MotDePasseDeTest-2026"},
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 403)
+
+    def test_connexion_depuis_le_port_vite_est_autorisee_avec_csrf(self):
+        origine_vite = "http://127.0.0.1:5173"
+        self.assertIn(origine_vite, settings.CSRF_TRUSTED_ORIGINS)
+
+        reponse = self.client.post(
+            "/api/auth/token/",
+            {"courriel": "test@example.org", "password": "MotDePasseDeTest-2026"},
+            format="json",
+            HTTP_ORIGIN=origine_vite,
+        )
+
+        self.assertEqual(reponse.status_code, 200, reponse.json())
+
+    def test_cookie_de_session_exige_csrf_et_deconnexion_efface_les_cookies(self):
+        connexion = self.client.post(
+            "/api/auth/token/",
+            {"courriel": "test@example.org", "password": "MotDePasseDeTest-2026"},
+            format="json",
+        )
+        self.assertEqual(connexion.status_code, 200)
+
+        self.client.credentials()
+        sans_csrf = self.client.patch(
+            "/api/auth/profile/",
+            {"url_avatar": ""},
+            format="json",
+        )
+        self.assertEqual(sans_csrf.status_code, 403)
+
+        csrf = self.client.get("/api/auth/csrf/").json()["csrf_token"]
+        self.client.credentials(HTTP_X_CSRFTOKEN=csrf)
+        deconnexion = self.client.post("/api/auth/logout/", format="json")
+
+        self.assertEqual(deconnexion.status_code, 204)
+        self.assertEqual(deconnexion.cookies["klasik_access"]["max-age"], 0)
+        self.assertEqual(deconnexion.cookies["klasik_refresh"]["max-age"], 0)
+        self.assertEqual(self.client.get("/api/auth/me/").status_code, 401)
+
+    def test_connexion_superuser_par_courriel_sans_alias_rapide(self):
         superutilisateur = Utilisateur.objects.create_superuser(
             "administrateur@example.org",
             "MotDePasseSuperuser-2026",
@@ -234,18 +354,24 @@ class TestsAuthentificationApi(TestCase):
 
         reponse_jetons = self.client.post(
             "/api/auth/token/",
-            {"courriel": "superuser", "password": "MotDePasseSuperuser-2026"},
+            {
+                "courriel": "administrateur@example.org",
+                "password": "MotDePasseSuperuser-2026",
+            },
             format="json",
         )
 
         self.assertEqual(reponse_jetons.status_code, 200)
-        self.assertIn("access", reponse_jetons.json())
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {reponse_jetons.json()['access']}"
-        )
         profil = self.client.get("/api/auth/me/")
         self.assertEqual(profil.status_code, 200)
         self.assertEqual(profil.json()["id"], str(superutilisateur.id))
+
+        alias_refuse = self.client.post(
+            "/api/auth/token/",
+            {"courriel": "superuser", "password": "MotDePasseSuperuser-2026"},
+            format="json",
+        )
+        self.assertIn(alias_refuse.status_code, {401, 403})
 
     def test_superuser_peut_se_connecter_sans_affiliation(self):
         superutilisateur = Utilisateur.objects.create_superuser(
@@ -261,9 +387,6 @@ class TestsAuthentificationApi(TestCase):
             format="json",
         )
         self.assertEqual(reponse_jetons.status_code, 200)
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {reponse_jetons.json()['access']}"
-        )
 
         profil = self.client.get("/api/auth/me/")
         etablissements = self.client.get("/api/etablissements/")
@@ -329,6 +452,41 @@ class TestsAuthentificationApi(TestCase):
         self.assertEqual(suppression.status_code, 200)
         self.assertIsNone(suppression.json()["url_avatar"])
 
+    def test_modification_profil_persiste_le_nom_et_les_coordonnees(self):
+        self.client.force_authenticate(self.utilisateur)
+        modifications = self.client.patch(
+            "/api/auth/profile/",
+            {
+                "nom_complet": "Nouveau nom",
+                "courriel": "nouveau.nom@example.org",
+                "telephone": "+509 3700-0000",
+                "biographie": "Profil mis à jour",
+                "ville": "Cap-Haïtien",
+            },
+            format="json",
+        )
+        profil = self.client.get("/api/auth/me/")
+
+        self.assertEqual(modifications.status_code, 200, modifications.data)
+        self.assertEqual(profil.status_code, 200)
+        self.assertEqual(profil.json()["nom_complet"], "Nouveau nom")
+        self.assertEqual(profil.json()["courriel"], "nouveau.nom@example.org")
+        self.assertEqual(profil.json()["telephone"], "+509 3700-0000")
+        self.assertEqual(profil.json()["biographie"], "Profil mis à jour")
+        self.assertEqual(profil.json()["ville"], "Cap-Haïtien")
+        self.utilisateur.refresh_from_db()
+        self.assertEqual(self.utilisateur.nom_complet, "Nouveau nom")
+
+    def test_lecture_du_logo_plateforme_est_publique_et_limitee_au_logo(self):
+        url_logo = "data:image/png;base64,iVBORw0KGgo="
+        ConfigurationMarquePlateforme.objects.create(url_logo=url_logo)
+        client_anonyme = APIClient()
+
+        reponse = client_anonyme.get("/api/plateforme/configuration/")
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.json(), {"url_logo": url_logo})
+
     def test_logo_plateforme_est_persistant_et_reserve_au_superadmin(self):
         url_logo = "data:image/png;base64,iVBORw0KGgo="
         self.client.force_authenticate(self.utilisateur)
@@ -355,16 +513,80 @@ class TestsAuthentificationApi(TestCase):
         self.assertEqual(lecture.status_code, 200)
         self.assertEqual(lecture.json()["url_logo"], url_logo)
 
+    def test_creation_etablissement_accepte_un_logo_image_de_plus_de_500_caracteres(self):
+        logo = "data:image/png;base64," + base64.b64encode(
+            b"\x89PNG\r\n\x1a\n" + b"x" * 512
+        ).decode("ascii")
+        courriel_fondateur = "fondateur.logo@example.org"
+        reponse = self.client.post(
+            "/api/etablissements/",
+            {
+                "etablissement": {
+                    "id": "tenant-logo-data-url",
+                    "code": "LOGO-DATA",
+                    "nom": "École logo data URL",
+                    "type": "SCOLAIRE",
+                    "code_pays": "HT",
+                    "ville": "Port-au-Prince",
+                    "telephone": "+509 3712 4567",
+                    "url_logo": logo,
+                    "devise_defaut": "HTG",
+                    "services_actifs": {"bibliotheque": True},
+                },
+                "unites": [],
+                "elements": [],
+                "fondateur": {
+                    "nom_complet": "Fondateur test",
+                    "courriel": courriel_fondateur,
+                    "telephone": "+509 3712 4567",
+                    "mot_de_passe": "MotDePasseLogo-2026",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 201, reponse.json())
+        self.assertEqual(reponse.json()["etablissement"]["url_logo"], logo)
+        etablissement = Etablissement.objects.get(pk="tenant-logo-data-url")
+        self.assertEqual(etablissement.url_logo, logo)
+
     def test_connexion_refuse_un_mot_de_passe_invalide_en_francais(self):
         reponse = self.client.post(
             "/api/auth/token/",
             {"courriel": "test@example.org", "password": "incorrect"},
             format="json",
         )
+        compte_inconnu = self.client.post(
+            "/api/auth/token/",
+            {"courriel": "inconnu@example.org", "password": "incorrect"},
+            format="json",
+        )
 
         self.assertIn(reponse.status_code, {401, 403})
         self.assertIn("message", reponse.json())
-        self.assertIn("identifiants invalides", reponse.json()["message"])
+        self.assertIn("identifiants incorrects", reponse.json()["message"].lower())
+        self.assertEqual(reponse.json()["message"], compte_inconnu.json()["message"])
+
+    def test_creer_compte_test_affiche_un_mot_de_passe_unique_et_force_son_changement(self):
+        sortie = StringIO()
+        call_command(
+            "creer_compte_test",
+            "compte.test@example.org",
+            "ENSEIGNANT",
+            stdout=sortie,
+        )
+        compte = Utilisateur.objects.get(courriel="compte.test@example.org")
+        _, _, mot_de_passe_affiche = sortie.getvalue().partition(
+            "Mot de passe temporaire (à noter, affiché une seule fois) : "
+        )
+        mot_de_passe = mot_de_passe_affiche.strip()
+
+        self.assertTrue(mot_de_passe)
+        self.assertEqual(sortie.getvalue().count("Mot de passe temporaire"), 1)
+        self.assertTrue(compte.check_password(mot_de_passe))
+        self.assertEqual(compte.role, "ENSEIGNANT")
+        self.assertTrue(compte.profil["est_compte_demo"])
+        self.assertTrue(compte.profil["doit_changer_mot_de_passe"])
 
     def test_profil_courant_refuse_une_requete_anonyme(self):
         reponse = self.client.get("/api/auth/me/")
@@ -373,7 +595,7 @@ class TestsAuthentificationApi(TestCase):
         self.assertIn("message", reponse.json())
 
     def test_connexion_demo_exige_opt_in_de_developpement_et_compte_seed(self):
-        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=False):
+        with override_settings(DEBUG=True, DEMO_PUBLIQUE_ACTIVE=False):
             refusee_sans_opt_in = self.client.post(
                 "/api/auth/demo/",
                 {"id_utilisateur": self.utilisateur.id},
@@ -381,7 +603,7 @@ class TestsAuthentificationApi(TestCase):
             )
         self.assertEqual(refusee_sans_opt_in.status_code, 404)
 
-        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=True):
+        with override_settings(DEBUG=True, DEMO_PUBLIQUE_ACTIVE=True):
             refusee_compte_reel = self.client.post(
                 "/api/auth/demo/",
                 {"id_utilisateur": self.utilisateur.id},
@@ -391,17 +613,19 @@ class TestsAuthentificationApi(TestCase):
 
         call_command("seed_demo", stdout=StringIO())
         compte_demo = Utilisateur.objects.get(pk="usr-super")
-        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=True):
+        with override_settings(DEBUG=True, DEMO_PUBLIQUE_ACTIVE=True):
             reponse = self.client.post(
                 "/api/auth/demo/",
                 {"id_utilisateur": compte_demo.id},
                 format="json",
             )
         self.assertEqual(reponse.status_code, 200)
-        self.assertIn("access", reponse.json())
-        self.assertIn("refresh", reponse.json())
+        self.assertNotIn("access", reponse.json())
+        self.assertNotIn("refresh", reponse.json())
+        self.assertTrue(reponse.cookies["klasik_access"]["httponly"])
+        self.assertTrue(reponse.cookies["klasik_refresh"]["httponly"])
 
-        with override_settings(DEBUG=False, DEMO_LOGIN_ENABLED=True):
+        with override_settings(DEBUG=False, DEMO_PUBLIQUE_ACTIVE=True):
             reponse_production = self.client.post(
                 "/api/auth/demo/",
                 {"id_utilisateur": compte_demo.id},
@@ -410,25 +634,131 @@ class TestsAuthentificationApi(TestCase):
 
         self.assertEqual(reponse_production.status_code, 404)
 
+    def test_connexion_google_verifie_audience_et_cree_un_compte_sans_mot_de_passe(self):
+        revendications = {
+            "email": "google.nouveau@example.org",
+            "email_verified": True,
+            "sub": "google-sub-nouveau",
+            "name": "Nouvel utilisateur Google",
+        }
+        with override_settings(DJANGO_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"):
+            with patch(
+                "google.oauth2.id_token.verify_oauth2_token",
+                return_value=revendications,
+            ) as verifier:
+                reponse = self.client.post(
+                    "/api/auth/google/",
+                    {"id_token": "jeton-google-valide"},
+                    format="json",
+                )
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        verifier.assert_called_once()
+        self.assertEqual(
+            verifier.call_args.kwargs["audience"],
+            "client-id.apps.googleusercontent.com",
+        )
+        utilisateur = Utilisateur.objects.get(courriel="google.nouveau@example.org")
+        self.assertTrue(utilisateur.courriel_verifie)
+        self.assertFalse(utilisateur.has_usable_password())
+        self.assertEqual(utilisateur.profil["google_sub"], "google-sub-nouveau")
+        self.assertEqual(utilisateur.nom_complet, "Nouvel utilisateur Google")
+        self.assertEqual(utilisateur.affiliations.count(), 0)
+        self.assertNotIn("access", reponse.json())
+        self.assertNotIn("refresh", reponse.json())
+        self.assertTrue(reponse.cookies["klasik_access"]["httponly"])
+        self.assertTrue(reponse.cookies["klasik_refresh"]["httponly"])
+
+    def test_connexion_google_lie_un_compte_existant_a_une_identite_verifiee(self):
+        revendications = {
+            "email": self.utilisateur.courriel,
+            "email_verified": True,
+            "sub": "google-sub-existant",
+        }
+        with override_settings(DJANGO_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"):
+            with patch(
+                "google.oauth2.id_token.verify_oauth2_token",
+                return_value=revendications,
+            ):
+                reponse = self.client.post(
+                    "/api/auth/google/",
+                    {"id_token": "jeton-google-valide"},
+                    format="json",
+                )
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.utilisateur.refresh_from_db()
+        self.assertTrue(self.utilisateur.courriel_verifie)
+        self.assertEqual(self.utilisateur.profil["google_sub"], "google-sub-existant")
+        self.assertTrue(self.utilisateur.check_password("MotDePasseDeTest-2026"))
+
+    def test_connexion_google_refuse_compte_non_verifie_audience_absente_et_autre_sujet_lie(self):
+        with override_settings(DJANGO_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"):
+            with patch(
+                "google.oauth2.id_token.verify_oauth2_token",
+                return_value={
+                    "email": "google.non.verifie@example.org",
+                    "email_verified": False,
+                    "sub": "google-sub-non-verifie",
+                },
+            ):
+                non_verifie = self.client.post(
+                    "/api/auth/google/",
+                    {"id_token": "jeton-google-valide"},
+                    format="json",
+                )
+        self.assertEqual(non_verifie.status_code, 403)
+        self.assertFalse(
+            Utilisateur.objects.filter(courriel="google.non.verifie@example.org").exists()
+        )
+
+        with override_settings(DJANGO_GOOGLE_CLIENT_ID=""):
+            with patch("google.oauth2.id_token.verify_oauth2_token") as verifier:
+                non_configure = self.client.post(
+                    "/api/auth/google/",
+                    {"id_token": "jeton-google-valide"},
+                    format="json",
+                )
+        self.assertEqual(non_configure.status_code, 503)
+        verifier.assert_not_called()
+
+        self.utilisateur.profil = {"google_sub": "google-sub-different"}
+        self.utilisateur.save(update_fields=("profil",))
+        with override_settings(DJANGO_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"):
+            with patch(
+                "google.oauth2.id_token.verify_oauth2_token",
+                return_value={
+                    "email": self.utilisateur.courriel,
+                    "email_verified": True,
+                    "sub": "google-sub-autre",
+                },
+            ):
+                sujet_different = self.client.post(
+                    "/api/auth/google/",
+                    {"id_token": "jeton-google-valide"},
+                    format="json",
+                )
+        self.assertEqual(sujet_different.status_code, 403)
+
     def test_jeton_de_renouvellement_est_rotatif(self):
         reponse_jetons = self.client.post(
             "/api/auth/token/",
             {"courriel": "test@example.org", "password": "MotDePasseDeTest-2026"},
             format="json",
         )
+        ancien_refresh = reponse_jetons.cookies["klasik_refresh"].value
 
         reponse_renouvellement = self.client.post(
             "/api/auth/token/refresh/",
-            {"refresh": reponse_jetons.json()["refresh"]},
             format="json",
         )
 
         self.assertEqual(reponse_renouvellement.status_code, 200)
-        self.assertIn("access", reponse_renouvellement.json())
-        self.assertIn("refresh", reponse_renouvellement.json())
+        self.assertNotIn("access", reponse_renouvellement.json())
+        self.assertNotIn("refresh", reponse_renouvellement.json())
         self.assertNotEqual(
-            reponse_renouvellement.json()["refresh"],
-            reponse_jetons.json()["refresh"],
+            reponse_renouvellement.cookies["klasik_refresh"].value,
+            ancien_refresh,
         )
 
     def test_schema_openapi_est_accessible(self):
@@ -440,7 +770,7 @@ class TestsAuthentificationApi(TestCase):
 
 class TestsApiMultitenant(TestCase):
     def setUp(self):
-        self.client = APIClient()
+        self.client = creer_client_api()
         self.etablissement = Etablissement.objects.create(
             id="tenant-scolaire-a",
             code="ECOLE-A",
@@ -459,7 +789,7 @@ class TestsApiMultitenant(TestCase):
             courriel="gestionnaire@example.org",
             password="MotDePasseDeTest-2026",
             nom_complet="Gestionnaire de test",
-            role="ADMIN_ETAB",
+            role="DIRECTEUR",
         )
         AffiliationEtablissement.objects.create(
             utilisateur=self.utilisateur,
@@ -574,9 +904,9 @@ class TestsApiMultitenant(TestCase):
         )
 
     def test_connexion_demo_refuse_un_etablissement_non_affilie(self):
-        self.utilisateur.profil = {"acces_demo_autorise": True}
+        self.utilisateur.profil = {"est_compte_demo": True}
         self.utilisateur.save(update_fields=["profil"])
-        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=True):
+        with override_settings(DEBUG=True, DEMO_PUBLIQUE_ACTIVE=True):
             reponse = self.client.post(
                 "/api/auth/demo/",
                 {
@@ -697,7 +1027,13 @@ class TestsApiMultitenant(TestCase):
         )
         self.assertEqual(reponse_interdite.status_code, 403)
 
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DJANGO_FRONTEND_URL="https://app.example.org",
+        DEFAULT_FROM_EMAIL="noreply@example.org",
+    )
     def test_creation_modification_et_retrait_compte_tenant(self):
+        mail.outbox.clear()
         base = f"/api/etablissements/{self.etablissement.id}/utilisateurs/"
         creation = self.client.post(
             base,
@@ -719,6 +1055,15 @@ class TestsApiMultitenant(TestCase):
         self.assertTrue(utilisateur.check_password("MotDePasseSolide-2026"))
         self.assertNotIn("mot_de_passe", creation.json())
         self.assertEqual(creation.json()["mot_de_passe_demo"], "")
+        self.assertEqual(len(mail.outbox), 1)
+        invitation = mail.outbox[0]
+        self.assertIn(self.etablissement.nom, invitation.subject)
+        self.assertIn(self.etablissement.nom, invitation.body)
+        self.assertIn("Agent d’inscription / Scolarité", invitation.body)
+        self.assertIn("Agent de scolarité", invitation.body)
+        self.assertIn("https://app.example.org/", invitation.body)
+        self.assertIn("obligatoirement", invitation.body)
+        self.assertNotIn("MotDePasseSolide-2026", invitation.body)
 
         modification = self.client.patch(
             f"{base}{utilisateur.id}/",
@@ -740,6 +1085,29 @@ class TestsApiMultitenant(TestCase):
                 utilisateur=utilisateur,
                 etablissement=self.etablissement,
             ).exists()
+        )
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DJANGO_FRONTEND_URL="https://app.example.org",
+    )
+    @patch("api.tenant_views.send_mail", side_effect=OSError("SMTP indisponible"))
+    def test_echec_courriel_annule_la_creation_du_compte(self, envoyer):
+        reponse = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/utilisateurs/",
+            {
+                "nom_complet": "Invitation sans courriel",
+                "courriel": "sans-courriel@example.org",
+                "id_role": "SCOLARITE",
+                "mot_de_passe": "MotDePasseSolide-2026",
+                "doit_changer_mot_de_passe": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 503)
+        self.assertFalse(
+            Utilisateur.objects.filter(courriel="sans-courriel@example.org").exists()
         )
 
     def test_gestion_compte_refuse_la_suspension_globale_multitenant(self):
@@ -769,6 +1137,30 @@ class TestsApiMultitenant(TestCase):
         self.assertEqual(reponse.status_code, 400)
         compte_multi.refresh_from_db()
         self.assertTrue(compte_multi.is_active)
+
+    def test_gestion_compte_suspend_et_reactive_un_compte_tenant(self):
+        compte = Utilisateur.objects.create_user(
+            courriel="compte.suspendu@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Compte à suspendre",
+            role="SCOLARITE",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=compte,
+            etablissement=self.etablissement,
+            role="SCOLARITE",
+        )
+        url = f"/api/etablissements/{self.etablissement.id}/utilisateurs/{compte.id}/"
+
+        suspension = self.client.patch(url, {"est_actif": False}, format="json")
+        compte.refresh_from_db()
+        reactivation = self.client.patch(url, {"est_actif": True}, format="json")
+        compte.refresh_from_db()
+
+        self.assertEqual(suspension.status_code, 200, suspension.data)
+        self.assertFalse(suspension.json()["est_actif"])
+        self.assertEqual(reactivation.status_code, 200, reactivation.data)
+        self.assertTrue(compte.is_active)
 
     def test_modification_etablissement_est_autorisee_et_tenant_scopee(self):
         modification = self.client.patch(
@@ -832,9 +1224,540 @@ class TestsApiMultitenant(TestCase):
         self.assertEqual(role_sans_audit.status_code, 403)
 
 
+class TestsCreationEtablissementApi(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = creer_client_api()
+        self.payload = {
+            "etablissement": {
+                "id": "tenant-cree-api",
+                "code": "ECOLE1",
+                "nom": "École créée par API",
+                "nom_court": "École API",
+                "type": "SCOLAIRE",
+                "code_pays": "FR",
+                "nom_pays": "France",
+                "fuseau_horaire": "Europe/Paris",
+                "autorite_tutelle": "Éducation nationale",
+                "ville": "Paris",
+                "adresse": "12 rue de test",
+                "telephone": "+33102030405",
+                "courriel": "fondatrice@example.org",
+                "annee_academique": "2026–2027",
+                "libelle_periode_courante": "Premier trimestre",
+                "devise_defaut": "EUR",
+                "taux_change_usd": 132,
+                "format_matricule": "ECO-26-{SEQ}",
+                "echelle_notation": 20,
+                "note_passage": 10,
+                "couleur_accent": "blue",
+                "devise_etablissement": "Savoir et ouverture",
+                "titre_direction": "Directrice",
+                "nom_direction": "Fondatrice de test",
+                "code_sceau": "SCEAU-ECOLE1",
+                "services_actifs": {
+                    "bibliotheque": True,
+                    "cantine": True,
+                    "transport": False,
+                    "infirmerie": True,
+                    "anciens": True,
+                },
+                "offre_saas": "Gratuit",
+                "statut_abonnement_saas": "GRATUIT",
+                "bloquer_documents_si_impaye": True,
+            },
+            "fondateur": {
+                "nom_complet": "Fondatrice de test",
+                "courriel": "fondatrice@example.org",
+                "telephone": "+33102030405",
+                "mot_de_passe": "Soleil-Orange-4826!",
+            },
+            "unites": [
+                {
+                    "id": "unite-creee-api",
+                    "id_etablissement": "tenant-cree-api",
+                    "code": "ECO-01",
+                    "nom": "Cycle secondaire",
+                    "categorie": "Secondaire",
+                    "niveau_ou_duree": "Annuel",
+                    "capacite": 35,
+                    "frais_scolarite_htg": 25000,
+                    "frais_inscription_htg": 1000,
+                    "repartition_facturation": "Trois tranches",
+                    "responsable_nom": "Fondatrice de test",
+                }
+            ],
+            "elements": [
+                {
+                    "id": "element-cree-api",
+                    "id_etablissement": "tenant-cree-api",
+                    "id_unite": "unite-creee-api",
+                    "code": "ECO-MAT1",
+                    "nom": "Mathématiques",
+                    "nature": "MATIERE",
+                    "coefficient_ou_credits": 3,
+                    "volume_horaire_total": 60,
+                    "id_enseignant": "",
+                    "libelle_periode": "Premier trimestre",
+                }
+            ],
+        }
+
+    def test_creation_anonyme_cree_tenant_fondateur_et_structure_relationnelle(self):
+        reponse = self.client.post("/api/etablissements/", self.payload, format="json")
+
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        etablissement = Etablissement.objects.get(pk="tenant-cree-api")
+        fondatrice = Utilisateur.objects.get(courriel="fondatrice@example.org")
+        self.assertTrue(fondatrice.check_password("Soleil-Orange-4826!"))
+        self.assertTrue(
+            AffiliationEtablissement.objects.filter(
+                utilisateur=fondatrice,
+                etablissement=etablissement,
+                role="DIRECTEUR",
+            ).exists()
+        )
+        self.assertEqual(etablissement.proprietaire_id, fondatrice.id)
+        self.assertEqual(
+            HistoriqueAbonnementSaas.objects.filter(etablissement=etablissement).count(),
+            1,
+        )
+        self.assertEqual(UniteAcademique.objects.filter(etablissement=etablissement).count(), 1)
+        self.assertEqual(
+            ElementPedagogique.objects.filter(etablissement=etablissement).count(),
+            1,
+        )
+        self.assertEqual(
+            EvenementCalendrier.objects.filter(etablissement=etablissement).count(),
+            3,
+        )
+        self.assertEqual(reponse.json()["etablissement"]["ville"], "Paris")
+        self.assertNotIn("mot_de_passe", reponse.json()["profil"])
+        self.assertNotIn("access", reponse.json())
+        self.assertNotIn("refresh", reponse.json())
+        self.assertTrue(reponse.cookies["klasik_access"]["httponly"])
+        self.assertTrue(reponse.cookies["klasik_refresh"]["httponly"])
+
+        profil = self.client.get("/api/auth/me/")
+        self.assertEqual(profil.status_code, 200)
+        self.assertEqual(profil.json()["id"], fondatrice.id)
+
+    def test_creation_authentifiee_reutilise_le_compte_et_verifie_le_courriel(self):
+        utilisateur = Utilisateur.objects.create_user(
+            courriel="fondateur.existant@example.org",
+            password="MotDePasseExistant-2026",
+            nom_complet="Fondateur existant",
+            role="AUDITEUR",
+        )
+        self.client.force_authenticate(utilisateur)
+        payload = {
+            **self.payload,
+            "fondateur": {
+                **self.payload["fondateur"],
+                "nom_complet": utilisateur.nom_complet,
+                "courriel": utilisateur.courriel,
+                "mot_de_passe": "",
+            },
+        }
+
+        reponse = self.client.post("/api/etablissements/", payload, format="json")
+
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(Utilisateur.objects.filter(courriel__iexact=utilisateur.courriel).count(), 1)
+        self.assertTrue(utilisateur.check_password("MotDePasseExistant-2026"))
+        self.assertNotIn("access", reponse.json())
+        self.assertEqual(
+            reponse.json()["profil"]["affiliations"][0]["id_role"],
+            "DIRECTEUR",
+        )
+
+    def test_creation_refuse_une_relation_inconnue_sans_laisser_de_donnees_partielles(self):
+        payload = {
+            **self.payload,
+            "elements": [
+                {
+                    **self.payload["elements"][0],
+                    "id_unite": "unite-inconnue",
+                }
+            ],
+        }
+
+        reponse = self.client.post("/api/etablissements/", payload, format="json")
+
+        self.assertEqual(reponse.status_code, 400)
+        self.assertFalse(Etablissement.objects.filter(pk="tenant-cree-api").exists())
+        self.assertFalse(Utilisateur.objects.filter(courriel="fondatrice@example.org").exists())
+
+    def test_creation_authentifiee_refuse_un_courriel_de_fondateur_different(self):
+        utilisateur = Utilisateur.objects.create_user(
+            courriel="proprietaire@example.org",
+            password="MotDePasseExistant-2026",
+            nom_complet="Propriétaire du compte",
+        )
+        self.client.force_authenticate(utilisateur)
+
+        reponse = self.client.post("/api/etablissements/", self.payload, format="json")
+
+        self.assertEqual(reponse.status_code, 400)
+        self.assertFalse(Etablissement.objects.filter(pk="tenant-cree-api").exists())
+
+    def test_creation_par_un_admin_plateforme_cree_un_fondateur_sans_affilier_admin(self):
+        administrateur = Utilisateur.objects.create_superuser(
+            "plateforme-creation@example.org",
+            "MotDePassePlateforme-2026",
+        )
+        self.client.force_authenticate(administrateur)
+
+        reponse = self.client.post("/api/etablissements/", self.payload, format="json")
+
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(reponse.json()["profil"]["id"], str(administrateur.id))
+        fondatrice = Utilisateur.objects.get(courriel="fondatrice@example.org")
+        etablissement = Etablissement.objects.get(pk="tenant-cree-api")
+        self.assertTrue(
+            AffiliationEtablissement.objects.filter(
+                utilisateur=fondatrice,
+                etablissement=etablissement,
+                role="DIRECTEUR",
+            ).exists()
+        )
+        self.assertFalse(
+            AffiliationEtablissement.objects.filter(
+                utilisateur=administrateur,
+                etablissement=etablissement,
+            ).exists()
+        )
+        self.assertEqual(reponse.cookies, {})
+
+    def test_creation_refuse_telephone_invalide_ou_fuseau_non_iana(self):
+        telephone_invalide = json.loads(json.dumps(self.payload))
+        telephone_invalide["etablissement"]["telephone"] = "+3310203040"
+        reponse_telephone = self.client.post(
+            "/api/etablissements/",
+            telephone_invalide,
+            format="json",
+        )
+
+        fuseau_invalide = json.loads(json.dumps(self.payload))
+        fuseau_invalide["etablissement"].update(
+            {
+                "code_pays": "INTL",
+                "telephone": "+216 12345678",
+                "fuseau_horaire": "Mars/Noctis",
+            }
+        )
+        fuseau_invalide["fondateur"]["telephone"] = "+216 12345678"
+        reponse_fuseau = self.client.post(
+            "/api/etablissements/",
+            fuseau_invalide,
+            format="json",
+        )
+
+        self.assertEqual(reponse_telephone.status_code, 400)
+        self.assertEqual(reponse_fuseau.status_code, 400)
+        self.assertFalse(Etablissement.objects.filter(pk="tenant-cree-api").exists())
+
+    def test_creation_refuse_un_code_pays_non_textuel(self):
+        payload = json.loads(json.dumps(self.payload))
+        payload["etablissement"]["code_pays"] = ["FR"]
+
+        reponse = self.client.post("/api/etablissements/", payload, format="json")
+
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertFalse(Etablissement.objects.filter(pk="tenant-cree-api").exists())
+
+    def test_creation_refuse_frais_negatifs(self):
+        payload = json.loads(json.dumps(self.payload))
+        payload["unites"][0]["frais_scolarite_htg"] = -1
+
+        reponse = self.client.post("/api/etablissements/", payload, format="json")
+
+        self.assertEqual(reponse.status_code, 400)
+        self.assertFalse(Etablissement.objects.filter(pk="tenant-cree-api").exists())
+
+
+class TestsIsolementSupervisionPlateforme(TestCase):
+    def setUp(self):
+        self.client = creer_client_api()
+        self.etablissement_affilie = Etablissement.objects.create(
+            id="tenant-affilie-plateforme",
+            code="TENANT-A",
+            nom="Établissement affilié",
+            nom_court="Affilié",
+            type="SCOLAIRE",
+        )
+        self.etablissement_client = Etablissement.objects.create(
+            id="tenant-client-plateforme",
+            code="TENANT-B",
+            nom="Établissement client",
+            nom_court="Client",
+            type="SCOLAIRE",
+        )
+        self.utilisateur = Utilisateur.objects.create_user(
+            courriel="responsable-tenant@example.org",
+            password="MotDePasseTenant-2026",
+            nom_complet="Responsable tenant",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.utilisateur,
+            etablissement=self.etablissement_affilie,
+            role="ADMIN_ETAB",
+        )
+        self.super_admin = Utilisateur.objects.create_superuser(
+            "supervision@example.org",
+            "MotDePasseSupervision-2026",
+        )
+
+    def test_liste_personnelle_et_liste_plateforme_sont_distinctes(self):
+        self.client.force_authenticate(self.utilisateur)
+        mes_etablissements = self.client.get("/api/etablissements/")
+        supervision_interdite = self.client.get("/api/plateforme/etablissements/")
+        details_supervision_interdits = self.client.get(
+            f"/api/plateforme/etablissements/{self.etablissement_client.id}/"
+        )
+        modification_supervision_interdite = self.client.patch(
+            f"/api/plateforme/etablissements/{self.etablissement_client.id}/",
+            {"offre_saas": "Essentiel"},
+            format="json",
+        )
+        self.assertEqual(mes_etablissements.status_code, 200)
+        self.assertEqual(
+            [item["id"] for item in mes_etablissements.json()],
+            [self.etablissement_affilie.id],
+        )
+        self.assertNotIn("proprietaire_nom", mes_etablissements.json()[0])
+        self.assertEqual(supervision_interdite.status_code, 403)
+        self.assertEqual(details_supervision_interdits.status_code, 403)
+        self.assertEqual(modification_supervision_interdite.status_code, 403)
+
+        self.client.force_authenticate(self.super_admin)
+        mes_etablissements_admin = self.client.get("/api/etablissements/")
+        supervision = self.client.get("/api/plateforme/etablissements/")
+        self.assertEqual(mes_etablissements_admin.status_code, 200)
+        self.assertEqual(mes_etablissements_admin.json(), [])
+        self.assertEqual(supervision.status_code, 200)
+        self.assertEqual(
+            {item["id"] for item in supervision.json()},
+            {self.etablissement_affilie.id, self.etablissement_client.id},
+        )
+
+    def test_api_liste_etablissements_affilies_repond_200_avec_cookie_session(self):
+        connexion = self.client.post(
+            "/api/auth/token/",
+            {
+                "courriel": "responsable-tenant@example.org",
+                "password": "MotDePasseTenant-2026",
+            },
+            format="json",
+        )
+        self.assertEqual(connexion.status_code, 200, connexion.data)
+
+        reponse = self.client.get("/api/etablissements/")
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual([item["id"] for item in reponse.json()], [self.etablissement_affilie.id])
+
+    def test_api_liste_etablissements_plateforme_repond_200_avec_cookie_session(self):
+        connexion = self.client.post(
+            "/api/auth/token/",
+            {
+                "courriel": "supervision@example.org",
+                "password": "MotDePasseSupervision-2026",
+            },
+            format="json",
+        )
+        self.assertEqual(connexion.status_code, 200, connexion.data)
+
+        mes_etablissements = self.client.get("/api/etablissements/")
+        supervision = self.client.get("/api/plateforme/etablissements/")
+
+        self.assertEqual(mes_etablissements.status_code, 200, mes_etablissements.data)
+        self.assertEqual(mes_etablissements.json(), [])
+        self.assertEqual(supervision.status_code, 200, supervision.data)
+        self.assertEqual(
+            {item["id"] for item in supervision.json()},
+            {self.etablissement_affilie.id, self.etablissement_client.id},
+        )
+
+    def test_metadata_plateforme_agrege_compte_apprenants_et_responsables(self):
+        directeur = Utilisateur.objects.create_user(
+            courriel="directeur.client@example.org",
+            password="MotDePasseDirecteur-2026",
+            nom_complet="Directeur client",
+            telephone="+509 3700-0001",
+            role="DIRECTEUR",
+        )
+        administrateur = Utilisateur.objects.create_user(
+            courriel="admin.client@example.org",
+            password="MotDePasseAdmin-2026",
+            nom_complet="Administrateur client",
+            role="ADMIN_ETAB",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=directeur,
+            etablissement=self.etablissement_client,
+            role="DIRECTEUR",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=administrateur,
+            etablissement=self.etablissement_client,
+            role="ADMIN_ETAB",
+        )
+        self.etablissement_affilie.proprietaire = self.utilisateur
+        self.etablissement_affilie.save(update_fields=("proprietaire",))
+        unite = UniteAcademique.objects.create(
+            id="unite-compteur-plateforme",
+            etablissement=self.etablissement_client,
+            code="UN-COUNT",
+            nom="Unité comptage",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        Apprenant.objects.create(
+            id="apprenant-compteur-plateforme",
+            etablissement=self.etablissement_client,
+            unite=unite,
+            matricule="COUNT-001",
+            prenom="Donnée",
+            nom="Privée",
+            sexe="F",
+        )
+        self.client.force_authenticate(self.super_admin)
+
+        reponse = self.client.get("/api/plateforme/etablissements/")
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        par_id = {ligne["id"]: ligne for ligne in reponse.json()}
+        client = par_id[self.etablissement_client.id]
+        affilie = par_id[self.etablissement_affilie.id]
+        self.assertEqual(client["proprietaire_nom"], "Directeur client")
+        self.assertEqual(client["proprietaire_courriel"], "directeur.client@example.org")
+        self.assertEqual(client["proprietaire_telephone"], "+509 3700-0001")
+        self.assertEqual(client["nombre_apprenants"], 1)
+        self.assertEqual(client["nombre_apprenants_total"], 1)
+        self.assertEqual(
+            {admin["role"] for admin in client["administrateurs_affilies"]},
+            {"DIRECTEUR", "ADMIN_ETAB"},
+        )
+        self.assertNotIn("prenom", client)
+        self.assertNotIn("apprenants", client)
+        self.assertEqual(affilie["proprietaire_nom"], "Responsable tenant")
+        self.assertTrue(affilie["cree_le"])
+
+    def test_super_admin_sans_affiliation_ne_peut_pas_lire_les_donnees_metier(self):
+        self.client.force_authenticate(self.super_admin)
+
+        reponse = self.client.get(
+            f"/api/etablissements/{self.etablissement_client.id}/donnees/apprenants/"
+        )
+
+        self.assertEqual(reponse.status_code, 403)
+
+    def test_is_superuser_sans_drapeau_plateforme_est_reconnu_uniquement_pour_la_console(self):
+        compte = Utilisateur.objects.create_user(
+            courriel="django-root@example.org",
+            password="MotDePasseRoot-2026",
+            nom_complet="Administrateur Django",
+        )
+        compte.is_superuser = True
+        compte.save(update_fields=("is_superuser",))
+        self.client.force_authenticate(compte)
+
+        profil = self.client.get("/api/auth/me/")
+        mes_etablissements = self.client.get("/api/etablissements/")
+        supervision = self.client.get("/api/plateforme/etablissements/")
+        acces_tenant = self.client.get(
+            f"/api/etablissements/{self.etablissement_client.id}/donnees/apprenants/"
+        )
+
+        self.assertTrue(profil.json()["est_super_admin_plateforme"])
+        self.assertEqual(mes_etablissements.json(), [])
+        self.assertEqual(supervision.status_code, 200)
+        self.assertEqual(acces_tenant.status_code, 403)
+
+    def test_super_admin_affilie_utilise_le_role_de_son_affiliation(self):
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.super_admin,
+            etablissement=self.etablissement_client,
+            role="ENSEIGNANT",
+        )
+        self.client.force_authenticate(self.super_admin)
+
+        liste_personnelle = self.client.get("/api/etablissements/")
+        acces_donnees = self.client.get(
+            f"/api/etablissements/{self.etablissement_client.id}/donnees/apprenants/"
+        )
+        gestion_roles_interdite = self.client.get(
+            f"/api/etablissements/{self.etablissement_client.id}/permissions/"
+        )
+
+        self.assertEqual(liste_personnelle.status_code, 200)
+        self.assertEqual(
+            [item["id"] for item in liste_personnelle.json()],
+            [self.etablissement_client.id],
+        )
+        self.assertEqual(acces_donnees.status_code, 200)
+        self.assertEqual(gestion_roles_interdite.status_code, 403)
+
+    def test_api_plateforme_ne_modifie_que_les_champs_d_abonnement(self):
+        self.client.force_authenticate(self.super_admin)
+
+        mise_a_jour = self.client.patch(
+            f"/api/plateforme/etablissements/{self.etablissement_client.id}/",
+            {"offre_saas": "Essentiel", "statut_abonnement_saas": "PAYE"},
+            format="json",
+        )
+        historique = self.client.get(
+            f"/api/plateforme/etablissements/{self.etablissement_client.id}/"
+        )
+        tentative_donnees_tenant = self.client.patch(
+            f"/api/plateforme/etablissements/{self.etablissement_client.id}/",
+            {"nom": "Nom altéré"},
+            format="json",
+        )
+
+        self.assertEqual(mise_a_jour.status_code, 200, mise_a_jour.data)
+        self.assertEqual(mise_a_jour.json()["offre_saas"], "Essentiel")
+        self.assertEqual(historique.status_code, 200, historique.data)
+        self.assertEqual(len(historique.json()["historique_forfaits_saas"]), 1)
+        self.assertEqual(
+            historique.json()["historique_forfaits_saas"][0]["offre_saas"],
+            "Essentiel",
+        )
+        self.assertEqual(tentative_donnees_tenant.status_code, 400)
+        self.etablissement_client.refresh_from_db()
+        self.assertEqual(self.etablissement_client.nom, "Établissement client")
+
+    def test_palette_personnalisee_est_validee_et_persistante(self):
+        self.client.force_authenticate(self.utilisateur)
+        url = f"/api/etablissements/{self.etablissement_affilie.id}/"
+
+        couleur_valide = self.client.patch(
+            url,
+            {"couleur_accent": "teal"},
+            format="json",
+        )
+        couleur_invalide = self.client.patch(
+            url,
+            {"couleur_accent": "amber"},
+            format="json",
+        )
+        couleur_malformee = self.client.patch(
+            url,
+            {"couleur_accent": []},
+            format="json",
+        )
+
+        self.assertEqual(couleur_valide.status_code, 200, couleur_valide.data)
+        self.assertEqual(couleur_invalide.status_code, 400)
+        self.assertEqual(couleur_malformee.status_code, 400)
+        self.etablissement_affilie.refresh_from_db()
+        self.assertEqual(self.etablissement_affilie.couleur_accent, "teal")
+
+
 class TestsPreuvesDomainesRelationnels(TestCase):
     def setUp(self):
-        self.client = APIClient()
+        self.client = creer_client_api()
         self.tenant = Etablissement.objects.create(
             id="tenant-preuves-a",
             code="PREUVES-A",
@@ -1106,8 +2029,8 @@ class TestsPreuvesDomainesRelationnels(TestCase):
             id="badge-preuve",
             etablissement=self.tenant,
             apprenant=self.apprenant,
-            code_badge="EXCELLENCE",
-            titre="Excellence",
+            titre_badge="Excellence",
+            categorie="Excellence",
             attribue_le="2026-11-22",
             attribue_par="Administration",
         )
@@ -1134,9 +2057,11 @@ class TestsPreuvesDomainesRelationnels(TestCase):
         self.assertTrue(consentement_reponse.json()["droit_image"])
         self.assertEqual(demande_reponse.status_code, 200)
         self.assertEqual(import_reponse.status_code, 200)
-        self.assertEqual(import_reponse.json()["nombre_lignes"], 10)
+        self.assertEqual(import_reponse.json()["lignes_importees"], 10)
+        self.assertNotIn("nombre_lignes", import_reponse.json())
         self.assertEqual(badge_reponse.status_code, 200)
-        self.assertEqual(badge_reponse.json()["code_badge"], "EXCELLENCE")
+        self.assertEqual(badge_reponse.json()["titre_badge"], "Excellence")
+        self.assertEqual(badge_reponse.json()["categorie"], "Excellence")
         self.assertEqual(traitement.status_code, 200)
         self.assertEqual(traitement.json()["statut"], "TRAITEE")
 
@@ -1164,13 +2089,14 @@ class TestsPreuvesDomainesRelationnels(TestCase):
 
 class TestsContratsFinancesRelationnelles(TestCase):
     def setUp(self):
-        self.client = APIClient()
+        self.client = creer_client_api()
         self.etablissement = Etablissement.objects.create(
             id="tenant-finances-rel",
             code="FIN-REL",
             nom="Établissement finances relationnelles",
             nom_court="Finances",
             type="SCOLAIRE",
+            code_pays="HT",
         )
         self.autre_etablissement = Etablissement.objects.create(
             id="tenant-finances-autre",
@@ -1295,10 +2221,513 @@ class TestsContratsFinancesRelationnelles(TestCase):
         paiement_autre.refresh_from_db()
         self.assertEqual(paiement_autre.statut, "VALIDE")
 
+    def test_paiement_valide_le_mode_selon_le_pays_et_garde_l_historique(self):
+        payload = {
+            "id": "paiement-moncash-api",
+            "numero_recu": "REC-HT-001",
+            "id_apprenant": self.apprenant.id,
+            "montant_htg": 500,
+            "mode_paiement": "MonCash",
+            "libelle": "Frais",
+            "paye_le": "2026-10-03",
+            "encaisse_par": self.utilisateur.nom_complet,
+        }
+        reference_manquante = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/paiements/",
+            payload,
+            format="json",
+        )
+        self.assertEqual(reference_manquante.status_code, 400)
+        payload["code_reference"] = "E2E-MONCASH-REF-001"
+        valide = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/paiements/",
+            payload,
+            format="json",
+        )
+        payload["id"] = "paiement-mode-invalide"
+        payload["numero_recu"] = "REC-HT-002"
+        payload["mode_paiement"] = "PayPal"
+        invalide = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/paiements/",
+            payload,
+            format="json",
+        )
+        suppression = self.client.delete(
+            f"/api/etablissements/{self.etablissement.id}/paiements/{self.paiement.id}/"
+        )
+
+        self.assertEqual(valide.status_code, 201, valide.data)
+        self.assertEqual(invalide.status_code, 400)
+        self.assertEqual(suppression.status_code, 403)
+        self.assertTrue(Paiement.objects.filter(pk=self.paiement.id).exists())
+
+    def test_net_bulletin_paie_est_recalcule_cote_serveur(self):
+        directeur = Utilisateur.objects.create_user(
+            courriel="directeur.paie@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Directeur paie",
+            role="DIRECTEUR",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=directeur,
+            etablissement=self.etablissement,
+            role="DIRECTEUR",
+        )
+        self.client.force_authenticate(directeur)
+        personnel = PersonnelEnseignant.objects.create(
+            id="personnel-paie",
+            etablissement=self.etablissement,
+            code="PAIE-01",
+            nom_complet="Personnel paie",
+        )
+        payload = {
+            "id": "bulletin-paie-api",
+            "id_personnel": personnel.id,
+            "nom_personnel": personnel.nom_complet,
+            "libelle_role": "Enseignant",
+            "libelle_mois": "Octobre 2026",
+            "heures_travaillees": 160,
+            "salaire_base_htg": 1000,
+            "primes_htg": 100,
+            "montant_brut_htg": 1,
+            "retenues_htg": 50,
+            "montant_net_htg": 999999,
+            "statut": "EN_ATTENTE",
+            "mode_paiement": "Virement bancaire",
+        }
+
+        reponse = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/paie/",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(reponse.json()["montant_brut_htg"], 1100)
+        self.assertEqual(reponse.json()["montant_net_htg"], 1050)
+        bulletin = BulletinPaie.objects.get(pk="bulletin-paie-api")
+        self.assertEqual(bulletin.montant_net_htg, 1050)
+
+
+class TestsCollectionsRelationnellesFinales(TestCase):
+    def setUp(self):
+        self.client = creer_client_api()
+        self.tenant = Etablissement.objects.create(
+            id="tenant-final-rel",
+            code="FINAL-REL",
+            nom="Établissement relationnel final",
+            nom_court="Final",
+            type="SCOLAIRE",
+        )
+        self.autre_tenant = Etablissement.objects.create(
+            id="tenant-final-autre",
+            code="FINAL-AUTRE",
+            nom="Autre établissement relationnel",
+            nom_court="Autre",
+            type="SCOLAIRE",
+        )
+        self.directeur = Utilisateur.objects.create_user(
+            courriel="directeur.final@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Directeur Final",
+            role="DIRECTEUR",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=self.directeur,
+            etablissement=self.tenant,
+            role="DIRECTEUR",
+        )
+        self.client.force_authenticate(self.directeur)
+        SurchargePermissions.objects.create(
+            etablissement=self.tenant,
+            role="DIRECTEUR",
+            permissions=[
+                "stages:voir",
+                "stages:gerer",
+                "rh:voir",
+                "rh:gerer",
+                "badges:voir",
+                "badges:gerer",
+                "importations:gerer",
+                "messagerie:utiliser",
+            ],
+        )
+        self.unite = UniteAcademique.objects.create(
+            id="unite-final-rel",
+            etablissement=self.tenant,
+            code="FINAL-1",
+            nom="Unité finale",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        self.apprenant = Apprenant.objects.create(
+            id="apprenant-final-rel",
+            etablissement=self.tenant,
+            unite=self.unite,
+            matricule="FINAL-001",
+            prenom="Ada",
+            nom="Relationnelle",
+            sexe="F",
+            indice_etape=1,
+        )
+
+    def test_contrats_tenant_et_alias_frontend_des_cinq_collections(self):
+        prefixe = f"/api/etablissements/{self.tenant.id}"
+        partenaire = self.client.post(
+            f"{prefixe}/partenaires/",
+            {
+                "id": "partenaire-final",
+                "nom_entreprise": "Entreprise E2E",
+                "secteur": "Formation",
+                "ville": "Port-au-Prince",
+                "nom_tuteur": "Tuteur E2E",
+                "telephone": "+509 3700-0000",
+                "places_disponibles": 3,
+                "stagiaires_actifs": 1,
+            },
+            format="json",
+        )
+        conge = self.client.post(
+            f"{prefixe}/demandes_conge/",
+            {
+                "id": "conge-final",
+                "nom_personnel": "Personnel E2E",
+                "libelle_role": "Enseignant",
+                "type_conge": "Congé annuel",
+                "date_debut": "2026-12-01",
+                "date_fin": "2026-12-05",
+                "motif": "Test d’intégration",
+                "statut": "EN_ATTENTE",
+                "demande_le": "2026-11-23",
+            },
+            format="json",
+        )
+        importation = self.client.post(
+            f"{prefixe}/journaux_importations/",
+            {
+                "id": "import-final",
+                "cible": "APPRENANTS",
+                "nom_fichier": "e2e.csv",
+                "lignes_importees": 7,
+                "importe_le": "2026-11-23",
+                "importe_par": self.directeur.nom_complet,
+            },
+            format="json",
+        )
+        badge = self.client.post(
+            f"{prefixe}/badges_attribues/",
+            {
+                "id": "badge-final",
+                "id_apprenant": self.apprenant.id,
+                "titre_badge": "Badge E2E",
+                "categorie": "Excellence",
+                "attribue_le": "2026-11-23",
+                "attribue_par": self.directeur.nom_complet,
+            },
+            format="json",
+        )
+
+        self.assertEqual(partenaire.status_code, 201, partenaire.data)
+        self.assertEqual(partenaire.json()["id_etablissement"], self.tenant.id)
+        self.assertEqual(conge.status_code, 201, conge.data)
+        self.assertEqual(conge.json()["statut"], "EN_ATTENTE")
+        self.assertEqual(importation.status_code, 201, importation.data)
+        self.assertEqual(importation.json()["lignes_importees"], 7)
+        self.assertNotIn("nombre_lignes", importation.json())
+        self.assertEqual(badge.status_code, 201, badge.data)
+        self.assertEqual(badge.json()["id_apprenant"], self.apprenant.id)
+        self.assertEqual(badge.json()["titre_badge"], "Badge E2E")
+        self.assertNotIn("code_badge", badge.json())
+        self.assertEqual(
+            PartenaireStage.objects.get(pk="partenaire-final").etablissement_id,
+            self.tenant.id,
+        )
+        self.assertEqual(
+            DemandeConge.objects.get(pk="conge-final").etablissement_id,
+            self.tenant.id,
+        )
+
+        autre_tenant = self.client.get(
+            f"/api/etablissements/{self.autre_tenant.id}/partenaires/"
+        )
+        generic = self.client.get(
+            f"{prefixe}/donnees/badges_attribues/"
+        )
+        self.assertEqual(autre_tenant.status_code, 403)
+        self.assertEqual(generic.status_code, 404)
+
+    def test_fils_et_messages_sont_scopes_aux_participants(self):
+        destinataire = Utilisateur.objects.create_user(
+            courriel="destinataire.final@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Destinataire Final",
+            role="ENSEIGNANT",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=destinataire,
+            etablissement=self.tenant,
+            role="ENSEIGNANT",
+        )
+        prefixe = f"/api/etablissements/{self.tenant.id}/fils_discussion/"
+        cree = self.client.post(
+            prefixe,
+            {
+                "id": "fil-final",
+                "sujet": "Discussion E2E",
+                "nom_interlocuteur": destinataire.nom_complet,
+                "role_interlocuteur": "Enseignant",
+                "categorie": "Enseignant",
+                "messages_non_lus": 0,
+                "mis_a_jour_le": "2026-11-23 09:00",
+                "messages": [
+                    {
+                        "id": "message-final-1",
+                        "nom_expediteur": "Nom falsifié",
+                        "role_expediteur": "Rôle falsifié",
+                        "contenu": "Premier message",
+                        "envoye_le": "2026-11-23 09:00",
+                        "est_de_moi": False,
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(cree.status_code, 201, cree.data)
+        self.assertEqual(cree.json()["id_etablissement"], self.tenant.id)
+        self.assertEqual(cree.json()["messages"][0]["nom_expediteur"], self.directeur.nom_complet)
+        self.assertTrue(cree.json()["messages"][0]["est_de_moi"])
+
+        client_destinataire = creer_client_api()
+        client_destinataire.force_authenticate(destinataire)
+        discussion_destinataire = client_destinataire.get(prefixe)
+        self.assertEqual(discussion_destinataire.status_code, 200)
+        self.assertEqual(
+            discussion_destinataire.json()["results"][0]["messages"][0]["est_de_moi"],
+            False,
+        )
+
+        non_participant = Utilisateur.objects.create_user(
+            courriel="nonparticipant.final@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Non Participant",
+            role="DIRECTEUR",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=non_participant,
+            etablissement=self.tenant,
+            role="DIRECTEUR",
+        )
+        client_non_participant = creer_client_api()
+        client_non_participant.force_authenticate(non_participant)
+        inaccessible = client_non_participant.get(f"{prefixe}fil-final/")
+        self.assertEqual(inaccessible.status_code, 404)
+
+    def test_apprenant_ne_voit_que_ses_badges_et_n_accede_pas_aux_domaines_admin(self):
+        autre_apprenant = Apprenant.objects.create(
+            id="apprenant-final-autre",
+            etablissement=self.tenant,
+            unite=self.unite,
+            matricule="FINAL-002",
+            prenom="Autre",
+            nom="Apprenant",
+            sexe="M",
+            indice_etape=1,
+        )
+        for id_badge, apprenant in (
+            ("badge-final-propre", self.apprenant),
+            ("badge-final-autre-apprenant", autre_apprenant),
+        ):
+            AttributionBadge.objects.create(
+                id=id_badge,
+                etablissement=self.tenant,
+                apprenant=apprenant,
+                titre_badge=id_badge,
+                categorie="Excellence",
+                attribue_le="2026-11-23",
+                attribue_par=self.directeur.nom_complet,
+            )
+        apprenant_user = Utilisateur.objects.create_user(
+            courriel="apprenant.final@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Ada Relationnelle",
+            role="APPRENANT",
+            profil={"ids_apprenants_lies": [self.apprenant.id]},
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=apprenant_user,
+            etablissement=self.tenant,
+            role="APPRENANT",
+        )
+        client_apprenant = creer_client_api()
+        client_apprenant.force_authenticate(apprenant_user)
+        prefixe = f"/api/etablissements/{self.tenant.id}"
+
+        badges = client_apprenant.get(f"{prefixe}/badges_attribues/")
+        finance = client_apprenant.get(f"{prefixe}/paiements/")
+        imports = client_apprenant.get(f"{prefixe}/journaux_importations/")
+        conges = client_apprenant.get(f"{prefixe}/demandes_conge/")
+
+        self.assertEqual(badges.status_code, 200)
+        self.assertEqual(
+            [ligne["id"] for ligne in badges.json()["results"]],
+            ["badge-final-propre"],
+        )
+        self.assertEqual(finance.status_code, 403)
+        self.assertEqual(imports.status_code, 403)
+        self.assertEqual(conges.status_code, 403)
+
+
+class TestsMigrationCollectionsRelationnelles(TestCase):
+    def test_migration_et_retour_conservent_le_contrat_json(self):
+        migration = import_module(
+            "donnees.migrations.0005_migrer_collections_relationnelles"
+        )
+        tenant = Etablissement.objects.create(
+            id="tenant-migration-final",
+            code="MIG-FINAL",
+            nom="Tenant migration",
+            nom_court="Migration",
+            type="SCOLAIRE",
+        )
+        unite = UniteAcademique.objects.create(
+            id="unite-migration-final",
+            etablissement=tenant,
+            code="MIG-1",
+            nom="Unité migration",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        apprenant = Apprenant.objects.create(
+            id="apprenant-migration-final",
+            etablissement=tenant,
+            unite=unite,
+            matricule="MIG-001",
+            prenom="Test",
+            nom="Migration",
+            sexe="F",
+            indice_etape=1,
+        )
+        auteur = Utilisateur.objects.create_user(
+            courriel="auteur.migration@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Auteur Migration",
+            role="DIRECTEUR",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=auteur,
+            etablissement=tenant,
+            role="DIRECTEUR",
+        )
+        objets = {
+            "partenaires": {
+                "id": "partenaire-migration",
+                "id_etablissement": tenant.id,
+                "nom_entreprise": "Partenaire migration",
+                "secteur": "Formation",
+                "ville": "Port-au-Prince",
+                "nom_tuteur": "Tuteur",
+                "telephone": "+509 3700-0000",
+                "places_disponibles": 2,
+                "stagiaires_actifs": 1,
+            },
+            "fils_discussion": {
+                "id": "fil-migration",
+                "id_etablissement": tenant.id,
+                "sujet": "Fil migration",
+                "nom_interlocuteur": auteur.nom_complet,
+                "role_interlocuteur": "Directeur",
+                "categorie": "Administration",
+                "messages_non_lus": 0,
+                "mis_a_jour_le": "2026-11-23",
+                "messages": [
+                    {
+                        "id": "message-migration",
+                        "nom_expediteur": auteur.nom_complet,
+                        "role_expediteur": "Directeur",
+                        "contenu": "Message conservé",
+                        "envoye_le": "2026-11-23",
+                    }
+                ],
+            },
+            "badges_attribues": {
+                "id": "badge-migration",
+                "id_etablissement": tenant.id,
+                "id_apprenant": apprenant.id,
+                "titre_badge": "Badge migration",
+                "categorie": "Excellence",
+                "attribue_le": "2026-11-23",
+                "attribue_par": auteur.nom_complet,
+            },
+            "journaux_importations": {
+                "id": "import-migration",
+                "id_etablissement": tenant.id,
+                "cible": "APPRENANTS",
+                "nom_fichier": "migration.csv",
+                "lignes_importees": 8,
+                "importe_le": "2026-11-23",
+                "importe_par": auteur.nom_complet,
+            },
+            "demandes_conge": {
+                "id": "conge-migration",
+                "id_etablissement": tenant.id,
+                "nom_personnel": "Personnel migration",
+                "libelle_role": "Enseignant",
+                "type_conge": "Congé annuel",
+                "date_debut": "2026-12-01",
+                "date_fin": "2026-12-02",
+                "motif": "Migration",
+                "statut": "EN_ATTENTE",
+                "demande_le": "2026-11-23",
+                "traite_par": "",
+            },
+        }
+        for collection, donnees in objets.items():
+            EnregistrementMetier.objects.create(
+                etablissement=tenant,
+                collection=collection,
+                id_objet=donnees["id"],
+                donnees=donnees,
+            )
+
+        contexte_migration = SimpleNamespace(connection=connection)
+        migration.migrer(apps, contexte_migration)
+
+        self.assertFalse(
+            EnregistrementMetier.objects.filter(
+                etablissement=tenant,
+                collection__in=objets.keys(),
+            ).exists()
+        )
+        self.assertEqual(
+            LotImportation.objects.get(pk="import-migration").nombre_lignes,
+            8,
+        )
+        self.assertEqual(
+            FilDiscussionDirecte.objects.get(pk="fil-migration")
+            .messages.get(pk="message-migration")
+            .contenu,
+            "Message conservé",
+        )
+        self.assertTrue(
+            FilDiscussionDirecte.objects.get(pk="fil-migration")
+            .participants.filter(pk=auteur.pk)
+            .exists()
+        )
+
+        migration.restaurer_json(apps, contexte_migration)
+
+        badge_json = EnregistrementMetier.objects.get(
+            etablissement=tenant,
+            collection="badges_attribues",
+            id_objet="badge-migration",
+        ).donnees
+        self.assertEqual(badge_json["titre_badge"], "Badge migration")
+        self.assertEqual(badge_json["id_apprenant"], apprenant.id)
+
 
 class TestsContratsPedagogieRelationnelle(TestCase):
     def setUp(self):
-        self.client = APIClient()
+        self.client = creer_client_api()
         self.etablissement = Etablissement.objects.create(
             id="tenant-pedagogie-rel",
             code="PED-REL",
@@ -1376,6 +2805,63 @@ class TestsContratsPedagogieRelationnelle(TestCase):
             enregistree_le="2026-10-10",
         )
 
+    def test_affectations_enseignant_et_elements_restent_dans_le_tenant(self):
+        administrateur = Utilisateur.objects.create_user(
+            courriel="admin.affectations@example.org",
+            password="MotDePasseDeTest-2026",
+            nom_complet="Administrateur affectations",
+            role="ADMIN_ETAB",
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=administrateur,
+            etablissement=self.etablissement,
+            role="DIRECTEUR",
+        )
+        autre_unite = UniteAcademique.objects.create(
+            id="unite-affectation-autre",
+            etablissement=self.autre_etablissement,
+            code="AUTRE",
+            nom="Unité externe",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        autre_enseignant = PersonnelEnseignant.objects.create(
+            id="enseignant-affectation-autre",
+            etablissement=self.autre_etablissement,
+            code="ENS-AUTRE",
+            nom_complet="Enseignant externe",
+        )
+        self.client.force_authenticate(administrateur)
+
+        affectation_externe = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/enseignants/",
+            {
+                "id": "enseignant-affectation-invalide",
+                "code": "ENS-INVALIDE",
+                "nom_complet": "Enseignant invalide",
+                "ids_unites_assignees": [autre_unite.id],
+                "ids_elements_assignes": [],
+            },
+            format="json",
+        )
+        element_enseignant_externe = self.client.patch(
+            f"/api/etablissements/{self.etablissement.id}/elements/{self.element.id}/",
+            {"id_enseignant": autre_enseignant.id},
+            format="json",
+        )
+
+        self.assertEqual(affectation_externe.status_code, 400, affectation_externe.data)
+        self.assertEqual(
+            element_enseignant_externe.status_code,
+            400,
+            element_enseignant_externe.data,
+        )
+        self.assertFalse(
+            PersonnelEnseignant.objects.filter(pk="enseignant-affectation-invalide").exists()
+        )
+        self.element.refresh_from_db()
+        self.assertEqual(self.element.id_enseignant, "")
+
     def test_contrat_note_publiée_verrouillee_en_snake_case(self):
         detail = self.client.get(
             f"/api/etablissements/{self.etablissement.id}/notes/{self.note.id}/"
@@ -1396,6 +2882,13 @@ class TestsContratsPedagogieRelationnelle(TestCase):
         self.assertEqual(publication.status_code, 200)
         self.assertTrue(publication.json()["verrouillee"])
         self.assertEqual(modification.status_code, 400)
+
+    def test_detail_personnel_respecte_la_permission_rh(self):
+        detail = self.client.get(
+            f"/api/etablissements/{self.etablissement.id}/enseignants/{self.enseignant.id}/"
+        )
+
+        self.assertEqual(detail.status_code, 403)
 
     def test_endpoint_pedagogie_isole_le_tenant(self):
         evenement = EvenementCalendrier.objects.create(
@@ -1421,7 +2914,7 @@ class TestsContratsPedagogieRelationnelle(TestCase):
 
 class TestsContratsScolariteRelationnelle(TestCase):
     def setUp(self):
-        self.client = APIClient()
+        self.client = creer_client_api()
         self.etablissement = Etablissement.objects.create(
             id="tenant-scolarite-rel",
             code="SCOL-REL",
@@ -1443,12 +2936,12 @@ class TestsContratsScolariteRelationnelle(TestCase):
             courriel="scolarite.relationnelle@example.org",
             password="MotDePasseDeTest-2026",
             nom_complet="Gestionnaire scolarité",
-            role="SCOLARITE",
+            role="DIRECTEUR",
         )
         AffiliationEtablissement.objects.create(
             utilisateur=self.utilisateur,
             etablissement=self.etablissement,
-            role="SCOLARITE",
+            role="DIRECTEUR",
         )
         self.client.force_authenticate(self.utilisateur)
 
@@ -1529,6 +3022,58 @@ class TestsContratsScolariteRelationnelle(TestCase):
         self.assertEqual(donnees["tuteurs"], [])
         self.assertEqual(donnees["echeancier"], [])
 
+    def test_frais_unite_negatifs_sont_refuses_par_l_api(self):
+        reponse = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/unites/",
+            {
+                "id": "unite-frais-negatifs",
+                "code": "FRAIS-NEG",
+                "nom": "Frais négatifs",
+                "categorie": "Secondaire",
+                "niveau_ou_duree": "Année",
+                "frais_scolarite_htg": -100,
+                "frais_inscription_htg": 0,
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertFalse(UniteAcademique.objects.filter(pk="unite-frais-negatifs").exists())
+
+    def test_creation_api_inscription_relie_apprenant_et_unite(self):
+        reponse = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/inscriptions/",
+            {
+                "id": "inscription-e2e-regression",
+                "numero_inscription": "INS-E2E-REG",
+                "annee_academique": "2026–2027",
+                "libelle_periode": "1er Trimestre",
+                "id_apprenant": self.apprenant.id,
+                "id_unite": self.unite.id,
+                "libelle_niveau": "9ème",
+                "type_inscription": "NOUVELLE",
+                "date_inscription": "2026-11-23",
+                "statut_inscription": "VALIDEE",
+                "montant_brut_htg": 13500,
+                "pourcentage_bourse": 10,
+                "montant_net_htg": 12150,
+                "pieces_fournies": [],
+                "option_cantine": False,
+                "option_transport": False,
+                "motif_statut": "",
+                "observations": "",
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        inscription = InscriptionApprenant.objects.get(pk="inscription-e2e-regression")
+        self.assertEqual(inscription.etablissement_id, self.etablissement.id)
+        self.assertEqual(inscription.apprenant_id, self.apprenant.id)
+        self.assertEqual(inscription.unite_id, self.unite.id)
+        self.assertEqual(reponse.json()["id_apprenant"], self.apprenant.id)
+        self.assertEqual(reponse.json()["id_unite"], self.unite.id)
+
     def test_isolation_typed_et_action_annulation_inscription(self):
         autre_unite = UniteAcademique.objects.create(
             id="unite-autre",
@@ -1581,13 +3126,51 @@ class TestsContratsScolariteRelationnelle(TestCase):
         autre_inscription.refresh_from_db()
         self.assertEqual(autre_inscription.statut_inscription, "VALIDEE")
 
+    def test_archivage_et_suppression_inscription_preservent_apprenant_et_finances(self):
+        paiement = Paiement.objects.create(
+            id="paiement-inscription-preserve",
+            etablissement=self.etablissement,
+            apprenant=self.apprenant,
+            numero_recu="REC-INS-PRESERVE",
+            montant_htg=500,
+            mode_paiement="MonCash",
+            libelle="Paiement conservé",
+            paye_le="2026-09-10",
+            encaisse_par="Gestionnaire scolarité",
+        )
+        archive = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/inscriptions/{self.inscription.id}/archiver/",
+            {"motif_statut": "Dossier terminé"},
+            format="json",
+        )
+        self.assertEqual(archive.status_code, 200, archive.data)
+        self.assertEqual(archive.json()["statut_inscription"], "ARCHIVEE")
+        self.assertTrue(Apprenant.objects.filter(pk=self.apprenant.id).exists())
+        self.assertTrue(Paiement.objects.filter(pk=paiement.id).exists())
+
+        suppression = self.client.delete(
+            f"/api/etablissements/{self.etablissement.id}/inscriptions/{self.inscription.id}/"
+        )
+
+        self.assertEqual(suppression.status_code, 204)
+        self.assertFalse(InscriptionApprenant.objects.filter(pk=self.inscription.id).exists())
+        self.assertTrue(Apprenant.objects.filter(pk=self.apprenant.id).exists())
+        self.assertTrue(Paiement.objects.filter(pk=paiement.id).exists())
+        self.assertTrue(
+            EntreeAuditApi.objects.filter(
+                collection="inscriptions",
+                id_objet=self.inscription.id,
+                action="SUPPRESSION",
+            ).exists()
+        )
+
 
 @override_settings(
     STORAGES={"default": {"BACKEND": "django.core.files.storage.InMemoryStorage"}}
 )
 class TestsFichiersTenant(TestCase):
     def setUp(self):
-        self.client = APIClient()
+        self.client = creer_client_api()
         self.etablissement = Etablissement.objects.create(
             id="tenant-fichier-a",
             code="FICHIER-A",
@@ -1747,14 +3330,20 @@ class TestsCommandeSeedDemo(TestCase):
                 for utilisateur in Utilisateur.objects.all()
             )
         )
+        self.assertTrue(
+            all(
+                utilisateur.profil.get("est_compte_demo")
+                for utilisateur in Utilisateur.objects.all()
+            )
+        )
 
-    def test_session_demo_seedee_accede_aux_etablissements_et_collections(self):
+    def test_session_demo_superadmin_reste_sans_affiliation_et_sans_acces_metier(self):
         call_command("seed_demo", stdout=StringIO())
-        client = APIClient()
+        client = creer_client_api()
         super_admin = Utilisateur.objects.get(est_super_admin_plateforme=True)
         etablissement = Etablissement.objects.first()
 
-        with override_settings(DEBUG=True, DEMO_LOGIN_ENABLED=True):
+        with override_settings(DEBUG=True, DEMO_PUBLIQUE_ACTIVE=True):
             connexion = client.post(
                 "/api/auth/demo/",
                 {
@@ -1765,9 +3354,9 @@ class TestsCommandeSeedDemo(TestCase):
             )
 
         self.assertEqual(connexion.status_code, 200)
-        client.credentials(HTTP_AUTHORIZATION=f"Bearer {connexion.json()['access']}")
         profil = client.get("/api/auth/me/")
         etablissements = client.get("/api/etablissements/")
+        supervision = client.get("/api/plateforme/etablissements/")
         apprenants = client.get(
             f"/api/etablissements/{etablissement.id}/donnees/apprenants/"
         )
@@ -1775,6 +3364,85 @@ class TestsCommandeSeedDemo(TestCase):
         self.assertEqual(profil.status_code, 200)
         self.assertEqual(profil.json()["id"], super_admin.id)
         self.assertEqual(etablissements.status_code, 200)
-        self.assertEqual(len(etablissements.json()), 5)
-        self.assertEqual(apprenants.status_code, 200)
-        self.assertGreater(apprenants.json()["count"], 0)
+        self.assertEqual(etablissements.json(), [])
+        self.assertEqual(supervision.status_code, 200)
+        self.assertEqual(len(supervision.json()), 5)
+        self.assertEqual(apprenants.status_code, 403)
+
+
+class TestsContactPublic(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = creer_client_api()
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="support@example.org",
+        DJANGO_SUPPORT_EMAIL="support@example.org",
+    )
+    def test_contact_public_envoie_le_message_au_support(self):
+        reponse = self.client.post(
+            "/api/contact/",
+            {
+                "nom": "Camille Test",
+                "courriel": "camille@example.org",
+                "sujet": "Demande d’information",
+                "message": "Je souhaite en savoir plus.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["support@example.org"])
+        self.assertEqual(mail.outbox[0].reply_to, ["camille@example.org"])
+        self.assertIn("Je souhaite en savoir plus.", mail.outbox[0].body)
+
+    def test_contact_public_rejette_une_adresse_invalide(self):
+        reponse = self.client.post(
+            "/api/contact/",
+            {
+                "nom": "Camille Test",
+                "courriel": "adresse-invalide",
+                "sujet": "Question",
+                "message": "Bonjour.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_contact_public_refuse_un_sujet_avec_saut_de_ligne(self):
+        reponse = self.client.post(
+            "/api/contact/",
+            {
+                "nom": "Camille Test",
+                "courriel": "camille@example.org",
+                "sujet": "Question\nBcc: externe@example.org",
+                "message": "Bonjour.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(
+        DEFAULT_FROM_EMAIL="noreply@example.org",
+        DJANGO_SUPPORT_EMAIL="support@example.org",
+    )
+    @patch("api.views.EmailMessage.send", side_effect=OSError("SMTP indisponible"))
+    def test_contact_public_signale_un_echec_d_envoi(self, envoyer):
+        reponse = self.client.post(
+            "/api/contact/",
+            {
+                "nom": "Camille Test",
+                "courriel": "camille@example.org",
+                "sujet": "Question",
+                "message": "Bonjour.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 503)

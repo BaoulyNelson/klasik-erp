@@ -29,7 +29,12 @@ import {
   TOUTES_LES_DEVISES,
 } from '../../configuration/regions_devises';
 import { utiliserErp } from '../../contexte/ContexteErp';
-import { CodeDevise, CompteBancaire, ConfigurationEtablissement } from '../../modeles/erp';
+import {
+  CodeDevise,
+  CompteBancaire,
+  ConfigurationEtablissement,
+  PALETTES_COULEUR_ETABLISSEMENT,
+} from '../../modeles/erp';
 import { obtenir_comptes_bancaires_defaut_pays } from '../../utilitaires/echeancier';
 import { traiter_image_logo } from '../../utilitaires/image_logo';
 import {
@@ -58,7 +63,7 @@ export const VueParametres: React.FC = () => {
     configuration_plateforme,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const peut_gerer = a_permission('parametres:gerer');
   const [annee_suivante, definir_annee_suivante] = useState('2027–2028');
 
@@ -590,23 +595,32 @@ export const VueParametres: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label className="block font-semibold mb-1">Thème couleur établissement</label>
-              <select
-                disabled={!peut_gerer}
-                value={couleur_accent}
-                onChange={(e) =>
-                  definir_couleur_accent(
-                    e.target.value as ConfigurationEtablissement['couleur_accent']
-                  )
-                }
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 disabled:opacity-60"
-              >
-                <option value="amber">Ambre (Formation Pro)</option>
-                <option value="blue">Bleu Royal (Scolaire)</option>
-                <option value="violet">Violet (Université)</option>
-              </select>
-            </div>
+            <fieldset>
+              <legend className="font-semibold mb-2">Thème couleur établissement</legend>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {PALETTES_COULEUR_ETABLISSEMENT.map((palette) => (
+                  <button
+                    key={palette.valeur}
+                    type="button"
+                    disabled={!peut_gerer}
+                    aria-pressed={couleur_accent === palette.valeur}
+                    onClick={() => definir_couleur_accent(palette.valeur)}
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left text-xs font-medium transition-colors disabled:opacity-60 ${
+                      couleur_accent === palette.valeur
+                        ? 'border-slate-500 bg-slate-50 dark:border-slate-400 dark:bg-slate-800'
+                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <span
+                      className="w-4 h-4 rounded-full border border-black/10 shrink-0"
+                      style={{ backgroundColor: palette.hex }}
+                      aria-hidden="true"
+                    />
+                    {palette.libelle}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
           </div>
 
           {peut_gerer && (

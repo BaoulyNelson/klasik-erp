@@ -49,7 +49,7 @@ export const VueActualites: React.FC = () => {
     a_permission,
   } = utiliserErp();
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const peut_gerer = a_permission('actualites:gerer');
 
   const [filtre_categorie, definir_filtre_categorie] = useState<

@@ -21,7 +21,7 @@ export const VueRapports: React.FC = () => {
     ajouter_toast,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
   const [filtre_unite, definir_filtre_unite] = useState('TOUS');
 
   const apprenants_filtres = useMemo(

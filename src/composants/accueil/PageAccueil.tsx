@@ -2,14 +2,12 @@ import React, { useState } from 'react';
 import {
   ArrowRight,
   ArrowUp,
-  BookOpen,
   Building2,
   Check,
   CheckCircle2,
   Clock,
   ExternalLink,
   Globe,
-  GraduationCap,
   Home,
   Laptop,
   Layers,
@@ -21,7 +19,6 @@ import {
   Phone,
   Plus,
   QrCode,
-  ShieldCheck,
   Smartphone,
   Sun,
   Users,
@@ -42,9 +39,12 @@ import {
 } from '../../configuration/regions_devises';
 import { utiliserErp } from '../../contexte/ContexteErp';
 import { TypeEtablissement } from '../../modeles/erp';
+import { envoyerMessageContactApi } from '../../services/clientApi';
 import { BadgeTypeEtablissement } from '../interface/BadgeTypeEtablissement';
 import { Bouton } from '../interface/Bouton';
 import { LogoPlateforme } from '../interface/LogoPlateforme';
+
+const DEMO_PUBLIQUE_ACTIVE = import.meta.env.VITE_DEMO_PUBLIQUE === 'true';
 
 const DONNEES_APERCU_MOBILE: Record<
   TypeEtablissement,
@@ -132,8 +132,6 @@ export const PageAccueil: React.FC = () => {
     definir_langue_active,
     definir_ecran_connexion_ouvert,
     definir_modale_nouvel_etablissement_ouverte,
-    connecter_utilisateur,
-    definir_route_active,
   } = utiliserErp();
 
   const textes = DICTIONNAIRE_ACCUEIL[langue_active];
@@ -145,22 +143,43 @@ export const PageAccueil: React.FC = () => {
   const [onglet_apercu, definir_onglet_apercu] = useState<'accueil' | 'appel' | 'finances'>(
     'accueil'
   );
+  const [contact_ouvert, definir_contact_ouvert] = useState(false);
+  const [contact_en_cours, definir_contact_en_cours] = useState(false);
+  const [contact_succes, definir_contact_succes] = useState(false);
+  const [contact_erreur, definir_contact_erreur] = useState(false);
+  const [contact_formulaire, definir_contact_formulaire] = useState({
+    nom: '',
+    courriel: '',
+    sujet: '',
+    message: '',
+  });
   const apercu_actif = DONNEES_APERCU_MOBILE[mode_apercu];
-
-  const lancer_demo = (
-    id_utilisateur: string,
-    id_etablissement?: string,
-    route?: 'tableau_de_bord' | 'plateforme'
-  ) => {
-    connecter_utilisateur(id_utilisateur, id_etablissement);
-    if (route) definir_route_active(route);
+  const ouvrir_contact = () => {
+    definir_contact_formulaire({ nom: '', courriel: '', sujet: '', message: '' });
+    definir_contact_succes(false);
+    definir_contact_erreur(false);
+    definir_contact_ouvert(true);
+  };
+  const envoyer_contact = async (evenement: React.FormEvent<HTMLFormElement>) => {
+    evenement.preventDefault();
+    definir_contact_en_cours(true);
+    definir_contact_erreur(false);
+    try {
+      await envoyerMessageContactApi(contact_formulaire);
+      definir_contact_succes(true);
+      definir_contact_formulaire({ nom: '', courriel: '', sujet: '', message: '' });
+    } catch {
+      definir_contact_erreur(true);
+    } finally {
+      definir_contact_en_cours(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 flex flex-col">
       {/* Barre de navigation publique */}
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-16 py-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
             <LogoPlateforme configuration={configuration_plateforme} taille="moyen" />
             <div>
@@ -173,7 +192,7 @@ export const PageAccueil: React.FC = () => {
             </div>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-600 dark:text-slate-300">
+          <nav className="hidden md:flex items-center gap-3 text-[11px] lg:text-xs font-medium text-slate-600 dark:text-slate-300">
             <a
               href="#institutions"
               className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
@@ -186,12 +205,22 @@ export const PageAccueil: React.FC = () => {
             >
               {textes.nav_fonctionnalites}
             </a>
-            <a
-              href="#demo"
-              className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
-            >
-              {textes.nav_demo}
-            </a>
+            {DEMO_PUBLIQUE_ACTIVE ? (
+              <a
+                href="#demo"
+                className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
+              >
+                {textes.nav_demo}
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={ouvrir_contact}
+                className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
+              >
+                {textes.nav_contact}
+              </button>
+            )}
             <a
               href="#tarifs"
               className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
@@ -200,7 +229,7 @@ export const PageAccueil: React.FC = () => {
             </a>
           </nav>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <select
               aria-label="Langue"
               value={langue_active}
@@ -337,14 +366,6 @@ export const PageAccueil: React.FC = () => {
                     <span>{textes.hero_cta_connexion}</span>
                   </Bouton>
 
-                  <Bouton
-                    variante="fantome"
-                    taille="lg"
-                    onClick={() => lancer_demo('usr-super', undefined, 'plateforme')}
-                  >
-                    <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                    <span>{textes.hero_cta_superadmin}</span>
-                  </Bouton>
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
@@ -610,6 +631,9 @@ export const PageAccueil: React.FC = () => {
                     </div>
                   </div>
                 </div>
+                <p className="mt-2 text-center lg:text-right text-[11px] text-slate-500 dark:text-slate-400">
+                  {textes.apercu_illustratif}
+                </p>
               </div>
             </div>
           </div>
@@ -666,9 +690,9 @@ export const PageAccueil: React.FC = () => {
                   variante="secondaire"
                   taille="sm"
                   className="w-full"
-                  onClick={() => lancer_demo('usr-dir-multi', 't-pro-epm', 'tableau_de_bord')}
+                  onClick={() => definir_ecran_connexion_ouvert(true)}
                 >
-                  <span>Tester l’École Pro (ÉP Méthodiste)</span>
+                  <span>{textes.btn_connexion}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Bouton>
               </div>
@@ -703,18 +727,9 @@ export const PageAccueil: React.FC = () => {
                   variante="secondaire"
                   taille="sm"
                   className="w-full"
-                  onClick={() => lancer_demo('usr-super', 't-sco-horizon', 'tableau_de_bord')}
+                  onClick={() => definir_ecran_connexion_ouvert(true)}
                 >
-                  <span>Tester Lycée International Paris (EUR)</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Bouton>
-                <Bouton
-                  variante="fantome"
-                  taille="sm"
-                  className="w-full"
-                  onClick={() => lancer_demo('usr-dir-sco', 't-sco-lauriers', 'tableau_de_bord')}
-                >
-                  <span>Tester École Les Lauriers (HTG)</span>
+                  <span>{textes.btn_connexion}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Bouton>
               </div>
@@ -750,18 +765,9 @@ export const PageAccueil: React.FC = () => {
                   variante="secondaire"
                   taille="sm"
                   className="w-full"
-                  onClick={() => lancer_demo('usr-super', 't-uni-ispd', 'tableau_de_bord')}
+                  onClick={() => definir_ecran_connexion_ouvert(true)}
                 >
-                  <span>Tester Polytechnique Dakar (XOF · CAMES)</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Bouton>
-                <Bouton
-                  variante="fantome"
-                  taille="sm"
-                  className="w-full"
-                  onClick={() => lancer_demo('usr-rect-uni', 't-uni-iut', 'tableau_de_bord')}
-                >
-                  <span>Tester Institut Univ. IUT (HTG)</span>
+                  <span>{textes.btn_connexion}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Bouton>
               </div>
@@ -818,7 +824,7 @@ export const PageAccueil: React.FC = () => {
                   icone: Users,
                   titre: 'Portails dédiés & RBAC 12 rôles',
                   description:
-                    'Espaces mobiles dédiés pour Parents, Apprenants/Étudiants, Enseignants et Super-Administrateurs de la plateforme.',
+                    'Espaces mobiles dédiés pour Parents, Apprenants/Étudiants, Enseignants et équipes de direction.',
                 },
               ].map((fonctionnalite) => {
                 const Icone = fonctionnalite.icone;
@@ -841,110 +847,30 @@ export const PageAccueil: React.FC = () => {
           </div>
         </section>
 
-        {/* Accès rapide démo multi-rôles */}
-        <section id="demo" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
-              <div>
-                <h2 className="text-xl font-display font-bold text-slate-900 dark:text-slate-100">
-                  {textes.section_demo_titre}
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {textes.section_demo_sous_titre}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Bouton
-                  variante="principal"
-                  taille="sm"
-                  onClick={() => definir_modale_nouvel_etablissement_ouverte(true)}
+        {DEMO_PUBLIQUE_ACTIVE && (
+          <section id="demo" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-display font-bold text-slate-900 dark:text-slate-100">
+                    {textes.section_demo_titre}
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    {textes.section_demo_sous_titre}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={ouvrir_contact}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>{textes.btn_creer_etablissement}</span>
-                </Bouton>
-                <Bouton
-                  variante="secondaire"
-                  taille="sm"
-                  onClick={() => definir_ecran_connexion_ouvert(true)}
-                >
-                  <span>Voir tous les comptes (14)</span>
-                </Bouton>
+                  {textes.demander_demo}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
             </div>
-
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <button
-                type="button"
-                onClick={() => lancer_demo('usr-super', undefined, 'plateforme')}
-                className="text-left p-4 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center justify-between">
-                  <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                  <span className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400">
-                    SUPER_ADMIN
-                  </span>
-                </div>
-                <div className="mt-2.5 text-sm font-bold text-slate-900 dark:text-slate-100">
-                  Super-Administrateur SaaS
-                </div>
-                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                  Console Multi-Pays, MRR, gestion des {etablissements.length} établissements.
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => lancer_demo('usr-econome-multi', 't-sco-lauriers', 'tableau_de_bord')}
-                className="text-left p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center justify-between">
-                  <Wallet className="w-4 h-4 text-emerald-600" />
-                  <span className="text-[11px] font-mono text-slate-500">ECONOME</span>
-                </div>
-                <div className="mt-2.5 text-sm font-bold text-slate-900 dark:text-slate-100">
-                  Économat & Caisse
-                </div>
-                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                  Encaissements, reçus QR, impayés, paie & clôtures.
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => lancer_demo('usr-enseignant', 't-sco-lauriers')}
-                className="text-left p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center justify-between">
-                  <BookOpen className="w-4 h-4 text-blue-600" />
-                  <span className="text-[11px] font-mono text-slate-500">ENSEIGNANT</span>
-                </div>
-                <div className="mt-2.5 text-sm font-bold text-slate-900 dark:text-slate-100">
-                  Portail Enseignant / Formateur
-                </div>
-                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                  Appel numérique hors-ligne, saisie des notes & LMS.
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => lancer_demo('usr-parent', 't-sco-lauriers')}
-                className="text-left p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center justify-between">
-                  <GraduationCap className="w-4 h-4 text-violet-600" />
-                  <span className="text-[11px] font-mono text-slate-500">PARENT</span>
-                </div>
-                <div className="mt-2.5 text-sm font-bold text-slate-900 dark:text-slate-100">
-                  Portail Parent Multi-Enfants
-                </div>
-                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                  Bulletins, assiduité et déclaration de paiements en ligne.
-                </div>
-              </button>
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Tarifs SaaS */}
         <section id="tarifs" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
@@ -1082,11 +1008,13 @@ export const PageAccueil: React.FC = () => {
                     Modules &amp; QR Codes
                   </a>
                 </li>
-                <li>
-                  <a href="#demo" className="hover:text-white transition-colors inline-block">
-                    Démo interactive
-                  </a>
-                </li>
+                {DEMO_PUBLIQUE_ACTIVE && (
+                  <li>
+                    <a href="#demo" className="hover:text-white transition-colors inline-block">
+                      Démo interactive
+                    </a>
+                  </li>
+                )}
                 <li>
                   <a href="#tarifs" className="hover:text-white transition-colors inline-block">
                     Offres &amp; Tarifs SaaS
@@ -1106,57 +1034,26 @@ export const PageAccueil: React.FC = () => {
               </ul>
             </div>
 
-            {/* Colonne 3 : Accès directs & Portails */}
+            {/* Colonne 3 : Modèles d’institutions */}
             <div className="lg:col-span-3 space-y-3.5">
               <h3 className="text-xs font-display font-semibold text-white tracking-wide">
-                Espaces &amp; Portails
+                Institutions
               </h3>
               <ul className="space-y-2.5 text-xs text-slate-400">
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => lancer_demo('usr-dir-multi', 't-pro-epm', 'tableau_de_bord')}
-                    className="hover:text-white transition-colors cursor-pointer text-left"
-                  >
+                  <a href="#institutions" className="hover:text-white transition-colors">
                     École Professionnelle &amp; Technique
-                  </button>
+                  </a>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => lancer_demo('usr-dir-sco', 't-sco-lauriers', 'tableau_de_bord')}
-                    className="hover:text-white transition-colors cursor-pointer text-left"
-                  >
+                  <a href="#institutions" className="hover:text-white transition-colors">
                     Établissement Scolaire (Primaire–Term.)
-                  </button>
+                  </a>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => lancer_demo('usr-rect-uni', 't-uni-iut', 'tableau_de_bord')}
-                    className="hover:text-white transition-colors cursor-pointer text-left"
-                  >
+                  <a href="#institutions" className="hover:text-white transition-colors">
                     Université &amp; Institut LMD / ECTS
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => definir_ecran_connexion_ouvert(true)}
-                    className="hover:text-white transition-colors cursor-pointer text-left"
-                  >
-                    Connexion utilisateur / RBAC
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => lancer_demo('usr-super', undefined, 'plateforme')}
-                    className="hover:text-white transition-colors cursor-pointer text-left inline-flex items-center gap-1.5"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    <span>Console Super-Admin Multi-Pays</span>
-                  </button>
+                  </a>
                 </li>
               </ul>
             </div>
@@ -1240,6 +1137,129 @@ export const PageAccueil: React.FC = () => {
           </div>
         </div>
       </footer>
+      {contact_ouvert && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4"
+          onMouseDown={(evenement) => {
+            if (evenement.target === evenement.currentTarget) definir_contact_ouvert(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-titre"
+            className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id="contact-titre" className="text-xl font-display font-bold">
+                  {textes.contact_titre}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {textes.contact_sous_titre}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => definir_contact_ouvert(false)}
+                aria-label={textes.contact_annuler}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={envoyer_contact} className="space-y-4">
+              <label className="block text-sm font-medium">
+                {textes.contact_nom}
+                <input
+                  required
+                  maxLength={120}
+                  autoComplete="name"
+                  value={contact_formulaire.nom}
+                  onChange={(evenement) =>
+                    definir_contact_formulaire({ ...contact_formulaire, nom: evenement.target.value })
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                {textes.contact_courriel}
+                <input
+                  required
+                  type="email"
+                  maxLength={254}
+                  autoComplete="email"
+                  value={contact_formulaire.courriel}
+                  onChange={(evenement) =>
+                    definir_contact_formulaire({
+                      ...contact_formulaire,
+                      courriel: evenement.target.value,
+                    })
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                {textes.contact_sujet}
+                <input
+                  required
+                  maxLength={160}
+                  value={contact_formulaire.sujet}
+                  onChange={(evenement) =>
+                    definir_contact_formulaire({
+                      ...contact_formulaire,
+                      sujet: evenement.target.value,
+                    })
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                {textes.contact_message}
+                <textarea
+                  required
+                  maxLength={5000}
+                  rows={5}
+                  value={contact_formulaire.message}
+                  onChange={(evenement) =>
+                    definir_contact_formulaire({
+                      ...contact_formulaire,
+                      message: evenement.target.value,
+                    })
+                  }
+                  className="mt-1 w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </label>
+              {contact_succes && (
+                <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
+                  {textes.contact_envoye}
+                </p>
+              )}
+              {contact_erreur && (
+                <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                  {textes.contact_erreur}
+                </p>
+              )}
+              <div className="flex justify-end gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => definir_contact_ouvert(false)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium dark:border-slate-700"
+                >
+                  {textes.contact_annuler}
+                </button>
+                <button
+                  type="submit"
+                  disabled={contact_en_cours}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {contact_en_cours ? '…' : textes.contact_envoyer}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </div>
   );
 };

@@ -79,7 +79,7 @@ export const CATALOGUE_FORFAITS_SAAS: DefinitionForfaitSaas[] = [
     inclus: [
       'Crédits ECTS, GPA 4.0 & jurys de soutenance',
       'Mobilité internationale (visas) & Anciens',
-      'Console Super-Admin & exports tutelles (MENFP, CAMES, IB)',
+      'Gestion des offres, abonnements et rapports de tutelle (MENFP, CAMES, IB)',
     ],
   },
 ];

@@ -46,6 +46,7 @@ import { utiliserErp } from '../../contexte/ContexteErp';
 import { IdentifiantRole, IdentifiantRoute } from '../../modeles/erp';
 import { BadgeTypeEtablissement } from '../interface/BadgeTypeEtablissement';
 import { LogoEtablissement } from '../interface/LogoEtablissement';
+import { LogoPlateforme } from '../interface/LogoPlateforme';
 import { ModaleConfirmationAction } from '../interface/ModaleConfirmationAction';
 import { obtenir_theme_etablissement } from '../interface/theme_etablissement';
 
@@ -126,7 +127,7 @@ const ROUTES_PRINCIPALES_PAR_ROLE: Record<IdentifiantRole, IdentifiantRoute[]> =
 
 export const NavigationMobileBasse: React.FC = () => {
   const {
-    etablissements_accessibles,
+    etablissements_affilies,
     etablissement_actif,
     utilisateur_actif,
     id_role_actif,
@@ -143,6 +144,8 @@ export const NavigationMobileBasse: React.FC = () => {
   const [tiroir_ouvert, definir_tiroir_ouvert] = useState(false);
   const [confirmation_deconnexion_ouverte, definir_confirmation_deconnexion_ouverte] =
     useState(false);
+  const compte_plateforme_sans_affiliation =
+    utilisateur_actif.est_super_admin_plateforme && etablissements_affilies.length === 0;
 
   useEffect(() => {
     if (!tiroir_ouvert) return;
@@ -153,7 +156,7 @@ export const NavigationMobileBasse: React.FC = () => {
     return () => window.removeEventListener('keydown', sur_touche);
   }, [tiroir_ouvert]);
 
-  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
 
   const elements_autorises = useMemo(
     () =>
@@ -307,25 +310,39 @@ export const NavigationMobileBasse: React.FC = () => {
                 <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto mb-3" />
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <LogoEtablissement
-                      type={etablissement_actif.type}
-                      code={etablissement_actif.code}
-                      url_logo={etablissement_actif.url_logo}
-                      nom={etablissement_actif.nom}
-                      taille="petit"
-                    />
+                    {compte_plateforme_sans_affiliation ? (
+                      <LogoPlateforme configuration={configuration_plateforme} taille="petit" />
+                    ) : (
+                      <LogoEtablissement
+                        type={etablissement_actif.type}
+                        code={etablissement_actif.code}
+                        url_logo={etablissement_actif.url_logo}
+                        nom={etablissement_actif.nom}
+                        taille="petit"
+                      />
+                    )}
                     <div className="min-w-0">
                       <div className="text-sm font-display font-bold text-slate-900 dark:text-slate-100 truncate">
-                        {etablissement_actif.nom}
+                        {compte_plateforme_sans_affiliation
+                          ? 'Console Plateforme'
+                          : etablissement_actif.nom}
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <BadgeTypeEtablissement type={etablissement_actif.type} compact />
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                          {obtenir_libelle_role_etablissement(
-                            id_role_actif,
-                            etablissement_actif.type
-                          )}
-                        </span>
+                        {compte_plateforme_sans_affiliation ? (
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            Compte plateforme
+                          </span>
+                        ) : (
+                          <>
+                            <BadgeTypeEtablissement type={etablissement_actif.type} compact />
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                              {obtenir_libelle_role_etablissement(
+                                id_role_actif,
+                                etablissement_actif.type
+                              )}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -383,7 +400,7 @@ export const NavigationMobileBasse: React.FC = () => {
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
-                      Mes établissements ({etablissements_accessibles.length})
+                      Mes établissements ({etablissements_affilies.length})
                     </span>
                     <button
                       type="button"
@@ -399,7 +416,7 @@ export const NavigationMobileBasse: React.FC = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    {etablissements_accessibles.map((etab) => {
+                    {etablissements_affilies.map((etab) => {
                       const est_courant = etab.id === etablissement_actif.id;
                       return (
                         <button
@@ -438,6 +455,23 @@ export const NavigationMobileBasse: React.FC = () => {
                         </button>
                       );
                     })}
+                    {compte_plateforme_sans_affiliation && (
+                      <div className="px-2 py-2">
+                        <p className="text-xs text-slate-600 dark:text-slate-300">
+                          Aucun établissement personnel — Compte Plateforme
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            definir_route_active('plateforme');
+                            definir_tiroir_ouvert(false);
+                          }}
+                          className="mt-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 cursor-pointer"
+                        >
+                          Ouvrir la Console Plateforme
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 

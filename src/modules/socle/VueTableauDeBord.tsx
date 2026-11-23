@@ -38,7 +38,7 @@ export const VueTableauDeBord: React.FC = () => {
     a_permission,
   } = utiliserErp();
 
-  const theme = obtenir_theme_etablissement(etablissement_actif.type);
+  const theme = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
 
   const indicateurs = useMemo(() => {
     const total_du = apprenants_etablissement.reduce((somme, a) => somme + a.total_du_htg, 0);
