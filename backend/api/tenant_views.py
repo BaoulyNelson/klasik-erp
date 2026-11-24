@@ -1051,6 +1051,7 @@ class ListeUtilisateursTenantView(APIView):
             "est_super_admin_plateforme": bool(
                 utilisateur.est_super_admin_plateforme or utilisateur.is_superuser
             ),
+            "a_mot_de_passe": utilisateur.has_usable_password(),
             "est_actif": utilisateur.est_actif,
             "url_avatar": profil.get("url_avatar"),
             "double_facteur_actif": profil.get("double_facteur_actif", False),
@@ -1110,6 +1111,7 @@ class ListeUtilisateursTenantView(APIView):
             raise ValidationError({"nom_complet": "Le nom complet doit contenir au moins 2 caractères."})
         if not isinstance(courriel, str):
             raise ValidationError({"courriel": "Une adresse courriel valide est obligatoire."})
+        courriel = courriel.strip()
         try:
             validate_email(courriel)
         except DjangoValidationError as erreur:
@@ -1118,30 +1120,46 @@ class ListeUtilisateursTenantView(APIView):
             raise ValidationError({"id_role": "Le rôle demandé ne peut pas être attribué."})
         if not isinstance(telephone, str) or not isinstance(fonction_locale, str):
             raise ValidationError("Les coordonnées de l’utilisateur sont invalides.")
-        if not isinstance(mot_de_passe, str) or len(mot_de_passe) < 8:
-            raise ValidationError({"mot_de_passe": "Le mot de passe doit contenir au moins 8 caractères."})
         doit_changer_mot_de_passe = donnees.get("doit_changer_mot_de_passe", False)
         if not isinstance(doit_changer_mot_de_passe, bool):
             raise ValidationError(
                 {"doit_changer_mot_de_passe": "Cette valeur doit être un booléen."}
             )
-        if Utilisateur.objects.filter(courriel__iexact=courriel.strip()).exists():
-            raise ValidationError({"courriel": "Cette adresse courriel est déjà utilisée."})
-
-        profil = {
-            "double_facteur_actif": bool(donnees.get("double_facteur_actif", False)),
-            "doit_changer_mot_de_passe": doit_changer_mot_de_passe,
-            "mot_de_passe_mis_a_jour_le": timezone.now().date().isoformat(),
-            "tentatives_connexion_echouees": 0,
-        }
-        utilisateur = Utilisateur.objects.create_user(
-            courriel=courriel.strip(),
-            password=mot_de_passe,
-            nom_complet=nom_complet.strip(),
-            telephone=telephone.strip(),
-            role=role,
-            profil=profil,
+        utilisateur = (
+            Utilisateur.objects.select_for_update()
+            .filter(courriel__iexact=courriel)
+            .first()
         )
+        nouveau_compte = utilisateur is None
+        if utilisateur is not None:
+            if not utilisateur.is_active:
+                raise ValidationError({"courriel": "Ce compte est désactivé."})
+            if AffiliationEtablissement.objects.filter(
+                utilisateur=utilisateur,
+                etablissement=etablissement,
+            ).exists():
+                raise ValidationError(
+                    {"courriel": "Ce compte est déjà affilié à cet établissement."}
+                )
+        else:
+            if not isinstance(mot_de_passe, str) or len(mot_de_passe) < 8:
+                raise ValidationError(
+                    {"mot_de_passe": "Le mot de passe doit contenir au moins 8 caractères."}
+                )
+            profil = {
+                "double_facteur_actif": bool(donnees.get("double_facteur_actif", False)),
+                "doit_changer_mot_de_passe": doit_changer_mot_de_passe,
+                "mot_de_passe_mis_a_jour_le": timezone.now().date().isoformat(),
+                "tentatives_connexion_echouees": 0,
+            }
+            utilisateur = Utilisateur.objects.create_user(
+                courriel=courriel,
+                password=mot_de_passe,
+                nom_complet=nom_complet.strip(),
+                telephone=telephone.strip(),
+                role=role,
+                profil=profil,
+            )
         affiliation = AffiliationEtablissement.objects.create(
             utilisateur=utilisateur,
             etablissement=etablissement,
@@ -1158,13 +1176,26 @@ class ListeUtilisateursTenantView(APIView):
         etiquette_role = RoleUtilisateur(role).label
         fonction_attribuee = fonction_locale.strip() or etiquette_role
         url_connexion = f"{settings.DJANGO_FRONTEND_URL}/"
-        texte_changement = (
-            "Lors de votre première connexion, vous devrez obligatoirement remplacer "
-            "le mot de passe temporaire par un mot de passe personnel avant d’accéder "
-            "à l’espace de travail."
-            if doit_changer_mot_de_passe
-            else "Le changement de mot de passe n’est pas obligatoire à la première "
-            "connexion, mais il est recommandé."
+        texte_acces = (
+            "Votre compte Klasik ERP existant et ses identifiants sont conservés. "
+            "Connectez-vous avec votre méthode habituelle (Google ou mot de passe). "
+            "Si vous utilisez Google, vous pouvez créer un mot de passe depuis "
+            "Profil > Sécurité après connexion."
+            if not nouveau_compte
+            else (
+                "Lors de votre première connexion, vous devrez obligatoirement remplacer "
+                "le mot de passe temporaire par un mot de passe personnel avant d’accéder "
+                "à l’espace de travail."
+                if doit_changer_mot_de_passe
+                else "Le changement de mot de passe n’est pas obligatoire à la première "
+                "connexion, mais il est recommandé."
+            )
+        )
+        texte_mot_de_passe_temporaire = (
+            "Votre mot de passe temporaire ne figure pas dans ce courriel. "
+            "Demandez-le à l’administrateur par un canal séparé.\n\n"
+            if nouveau_compte
+            else ""
         )
         message = (
             f"Bonjour {utilisateur.nom_complet},\n\n"
@@ -1173,9 +1204,8 @@ class ListeUtilisateursTenantView(APIView):
             f"Fonction dans l’établissement : {fonction_attribuee}.\n"
             f"Adresse de votre compte : {utilisateur.courriel}.\n\n"
             f"Pour vous connecter : {url_connexion}\n\n"
-            f"{texte_changement}\n"
-            "Votre mot de passe temporaire ne figure pas dans ce courriel. "
-            "Demandez-le à l’administrateur par un canal séparé.\n\n"
+            f"{texte_acces}\n\n"
+            f"{texte_mot_de_passe_temporaire}"
             "Si vous n’attendiez pas cette invitation, contactez l’établissement."
         )
         try:

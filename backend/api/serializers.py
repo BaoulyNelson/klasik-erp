@@ -52,6 +52,7 @@ class ProfilUtilisateurSerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)
     est_actif = serializers.BooleanField(source="is_active", read_only=True)
     est_super_admin_plateforme = serializers.SerializerMethodField()
+    a_mot_de_passe = serializers.SerializerMethodField()
     affiliations = AffiliationUtilisateurSerializer(many=True, read_only=True)
     url_avatar = serializers.SerializerMethodField()
     biographie = serializers.SerializerMethodField()
@@ -78,6 +79,7 @@ class ProfilUtilisateurSerializer(serializers.ModelSerializer):
             "telephone",
             "role",
             "est_super_admin_plateforme",
+            "a_mot_de_passe",
             "est_actif",
             "affiliations",
             "url_avatar",
@@ -129,6 +131,10 @@ class ProfilUtilisateurSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.BooleanField())
     def get_est_super_admin_plateforme(self, utilisateur) -> bool:
         return bool(utilisateur.est_super_admin_plateforme or utilisateur.is_superuser)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_a_mot_de_passe(self, utilisateur) -> bool:
+        return utilisateur.has_usable_password()
 
     @extend_schema_field(serializers.BooleanField())
     def get_doit_changer_mot_de_passe(self, utilisateur) -> bool:

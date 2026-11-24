@@ -206,6 +206,7 @@ interface ProfilApi {
   role: IdentifiantRole;
   est_super_admin_plateforme: boolean;
   est_actif: boolean;
+  a_mot_de_passe: boolean;
   doit_changer_mot_de_passe: boolean;
   affiliations: CompteUtilisateur['affiliations'];
   ids_apprenants_lies: string[];
@@ -427,6 +428,24 @@ async function charger_utilisateurs_api(
     }
     throw erreur;
   }
+}
+
+function preserver_affiliations_utilisateur_courant(
+  utilisateurs: CompteUtilisateur[],
+  utilisateur_courant: CompteUtilisateur
+): CompteUtilisateur[] {
+  let utilisateur_trouve = false;
+  const resultat = utilisateurs.map((utilisateur) => {
+    if (utilisateur.id !== utilisateur_courant.id) return utilisateur;
+    utilisateur_trouve = true;
+    return {
+      ...utilisateur,
+      affiliations: utilisateur_courant.affiliations,
+      est_super_admin_plateforme: utilisateur_courant.est_super_admin_plateforme,
+      a_mot_de_passe: utilisateur_courant.a_mot_de_passe,
+    };
+  });
+  return utilisateur_trouve ? resultat : [utilisateur_courant, ...resultat];
 }
 
 async function charger_journaux_audit_api(
@@ -1239,7 +1258,7 @@ interface ValeurContexteErp {
   modifier_mon_mot_de_passe: (
     mot_de_passe_actuel: string,
     nouveau_mot_de_passe: string
-  ) => boolean;
+  ) => Promise<boolean>;
   finaliser_changement_mot_de_passe_obligatoire: (
     nouveau_mot_de_passe: string
   ) => Promise<{
@@ -1833,7 +1852,10 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           const nouvel_etat: EtatPersiste = {
             ...etat,
             ...donnees_api,
-            utilisateurs: utilisateurs_api,
+            utilisateurs: preserver_affiliations_utilisateur_courant(
+              utilisateurs_api,
+              utilisateur_actif
+            ),
             journaux_audit: journaux_audit_api,
             surcharges_permissions: {
               ...Object.fromEntries(
@@ -2723,6 +2745,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         affiliations: profil.affiliations,
         est_super_admin_plateforme: profil.est_super_admin_plateforme,
         est_actif: profil.est_actif,
+        a_mot_de_passe: profil.a_mot_de_passe,
         doit_changer_mot_de_passe: profil.doit_changer_mot_de_passe,
         mot_de_passe_demo: '',
       };
@@ -2900,7 +2923,10 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           url_logo: configuration_logo_api.url_logo || undefined,
         },
         etablissements: etablissements_fusionnes,
-        utilisateurs: utilisateurs_api,
+        utilisateurs: preserver_affiliations_utilisateur_courant(
+          utilisateurs_api,
+          utilisateur_api
+        ),
         journaux_audit: journaux_audit_api,
         file_hors_ligne: [],
         surcharges_permissions,
@@ -6693,10 +6719,29 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
             },
           }
         )
-          .then((nouvel_utilisateur) => {
+          .then((nouvel_utilisateur_api) => {
+            const nouvel_utilisateur =
+              nouvel_utilisateur_api.id === utilisateur_actif.id
+                ? {
+                    ...nouvel_utilisateur_api,
+                    affiliations: [
+                      ...utilisateur_actif.affiliations.filter(
+                        (affiliation) =>
+                          affiliation.id_etablissement !== etablissement_actif.id
+                      ),
+                      ...nouvel_utilisateur_api.affiliations,
+                    ],
+                    a_mot_de_passe: utilisateur_actif.a_mot_de_passe,
+                  }
+                : nouvel_utilisateur_api;
             definir_etat((precedent) => ({
               ...precedent,
-              utilisateurs: [nouvel_utilisateur, ...precedent.utilisateurs],
+              utilisateurs: [
+                nouvel_utilisateur,
+                ...precedent.utilisateurs.filter(
+                  (utilisateur) => utilisateur.id !== nouvel_utilisateur.id
+                ),
+              ],
             }));
             ajouter_toast({
               titre: `Invitation envoyée : ${nouvel_utilisateur.nom_complet}`,
@@ -6733,6 +6778,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         mot_de_passe_demo: saisie.mot_de_passe_demo.trim(),
         initiales_avatar: initiales,
         est_actif: true,
+        a_mot_de_passe: true,
         double_facteur_actif: saisie.double_facteur_actif,
         doit_changer_mot_de_passe: saisie.doit_changer_mot_de_passe ?? false,
         mot_de_passe_mis_a_jour_le: new Date().toISOString().slice(0, 10),
@@ -6748,7 +6794,12 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
 
       definir_etat((precedent) => ({
         ...precedent,
-        utilisateurs: [nouvel_utilisateur, ...precedent.utilisateurs],
+        utilisateurs: [
+          nouvel_utilisateur,
+          ...precedent.utilisateurs.filter(
+            (utilisateur) => utilisateur.id !== nouvel_utilisateur.id
+          ),
+        ],
       }));
       ajouter_entree_audit({
         id_etablissement: etablissement_actif.id,
@@ -6766,6 +6817,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     },
     [
       etablissement_actif.id,
+      utilisateur_actif.id,
+      utilisateur_actif.affiliations,
+      utilisateur_actif.a_mot_de_passe,
       utilisateur_actif.nom_complet,
       id_role_actif,
       ajouter_entree_audit,
@@ -7607,8 +7661,16 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const modifier_mon_mot_de_passe = useCallback(
-    (mot_de_passe_actuel: string, nouveau_mot_de_passe: string): boolean => {
-      if (mot_de_passe_actuel !== utilisateur_actif.mot_de_passe_demo) {
+    async (
+      mot_de_passe_actuel: string,
+      nouveau_mot_de_passe: string
+    ): Promise<boolean> => {
+      const compte_a_un_mot_de_passe = utilisateur_actif.a_mot_de_passe !== false;
+      if (
+        !SOURCE_API &&
+        compte_a_un_mot_de_passe &&
+        mot_de_passe_actuel !== utilisateur_actif.mot_de_passe_demo
+      ) {
         ajouter_toast({
           titre: 'Mot de passe actuel incorrect',
           description: 'Veuillez vérifier votre mot de passe actuel.',
@@ -7616,7 +7678,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         });
         return false;
       }
-      if (nouveau_mot_de_passe.trim() === mot_de_passe_actuel) {
+      if (compte_a_un_mot_de_passe && nouveau_mot_de_passe.trim() === mot_de_passe_actuel) {
         ajouter_toast({
           titre: 'Mot de passe identique',
           description: 'Le nouveau mot de passe doit être différent de l’actuel.',
@@ -7633,6 +7695,29 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         });
         return false;
       }
+      if (SOURCE_API) {
+        try {
+          await requeteApi('/auth/password/change/', {
+            method: 'POST',
+            body: {
+              ...(compte_a_un_mot_de_passe
+                ? { ancien_mot_de_passe: mot_de_passe_actuel }
+                : {}),
+              nouveau_mot_de_passe: nouveau_mot_de_passe.trim(),
+            },
+          });
+        } catch (erreur: unknown) {
+          ajouter_toast({
+            titre: 'Mot de passe non modifié',
+            description:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Le serveur n’a pas pu enregistrer votre nouveau mot de passe.',
+            variante: 'error',
+          });
+          return false;
+        }
+      }
       const aujourdhui = new Date().toISOString().slice(0, 10);
       definir_etat((precedent) => ({
         ...precedent,
@@ -7640,7 +7725,8 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           u.id === utilisateur_actif.id
             ? {
                 ...u,
-                mot_de_passe_demo: nouveau_mot_de_passe.trim(),
+                mot_de_passe_demo: SOURCE_API ? '' : nouveau_mot_de_passe.trim(),
+                a_mot_de_passe: true,
                 mot_de_passe_mis_a_jour_le: aujourdhui,
                 doit_changer_mot_de_passe: false,
               }
@@ -7665,6 +7751,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     [
       utilisateur_actif.id,
       utilisateur_actif.mot_de_passe_demo,
+      utilisateur_actif.a_mot_de_passe,
       utilisateur_actif.nom_complet,
       utilisateur_actif.courriel,
       etablissement_actif.id,

@@ -253,6 +253,7 @@ export interface CompteUtilisateur {
   preferences_notifications?: PreferencesNotificationsUtilisateur;
   est_super_admin_plateforme?: boolean;
   est_actif?: boolean;
+  a_mot_de_passe?: boolean;
   double_facteur_actif?: boolean;
   doit_changer_mot_de_passe?: boolean;
   mot_de_passe_mis_a_jour_le?: string;

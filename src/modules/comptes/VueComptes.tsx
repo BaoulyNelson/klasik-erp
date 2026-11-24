@@ -44,6 +44,7 @@ export const VueComptes: React.FC = () => {
   } = utiliserErp();
 
   const theme_etab = obtenir_theme_etablissement(etablissement_actif.type, etablissement_actif.couleur_accent);
+  const source_api = import.meta.env.PROD || import.meta.env.VITE_SOURCE_DONNEES === 'api';
 
   const [nom_complet, definir_nom_complet] = useState('');
   const [courriel, definir_courriel] = useState('');
@@ -106,7 +107,10 @@ export const VueComptes: React.FC = () => {
   const gerer_creation_utilisateur = (evenement: React.FormEvent) => {
     evenement.preventDefault();
     if (!nom_complet.trim() || !courriel.trim()) return;
-    const politique_mot_de_passe = valider_politique_mot_de_passe(mot_de_passe_demo);
+    const politique_mot_de_passe =
+      source_api && !mot_de_passe_demo
+        ? { valide: true, message: '' }
+        : valider_politique_mot_de_passe(mot_de_passe_demo);
     if (!politique_mot_de_passe.valide) {
       ajouter_toast({
         titre: 'Mot de passe non conforme',
@@ -233,7 +237,9 @@ export const VueComptes: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1">Mot de passe initial</label>
+                <label className="block font-semibold mb-1">
+                  Mot de passe initial {source_api ? '(facultatif si compte existant)' : ''}
+                </label>
                 <ChampMotDePasse
                   value={mot_de_passe_demo}
                   onChange={(e) => definir_mot_de_passe_demo(e.target.value)}
@@ -246,6 +252,12 @@ export const VueComptes: React.FC = () => {
               mot_de_passe={mot_de_passe_demo}
               sur_generation={(genere) => definir_mot_de_passe_demo(genere)}
             />
+            {source_api && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Si ce courriel possède déjà un compte, ses identifiants sont conservés et seul
+                l’accès à {etablissement_actif.nom_court} sera ajouté.
+              </p>
+            )}
 
             <div>
               <label className="block font-semibold mb-1">

@@ -307,6 +307,60 @@ class TestsAuthentificationApi(TestCase):
         self.assertTrue(self.utilisateur.check_password("NouveauMotDePasse-2026"))
         self.assertFalse(self.utilisateur.profil["doit_changer_mot_de_passe"])
 
+    def test_compte_google_peut_creer_un_mot_de_passe_apres_authentification(self):
+        revendications = {
+            "email": "google.sans.mdp@example.org",
+            "email_verified": True,
+            "sub": "google-sub-sans-mdp",
+        }
+        with override_settings(DJANGO_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"):
+            with patch(
+                "google.oauth2.id_token.verify_oauth2_token",
+                return_value=revendications,
+            ):
+                connexion_google = self.client.post(
+                    "/api/auth/google/",
+                    {"id_token": "jeton-google-valide"},
+                    format="json",
+                )
+
+        self.assertEqual(connexion_google.status_code, 200, connexion_google.data)
+        profil_initial = self.client.get("/api/auth/me/")
+        self.assertFalse(profil_initial.json()["a_mot_de_passe"])
+
+        changement = self.client.post(
+            "/api/auth/password/change/",
+            {"nouveau_mot_de_passe": "NouveauMotDePasse-2026"},
+            format="json",
+        )
+
+        self.assertEqual(changement.status_code, 200, changement.data)
+        compte = Utilisateur.objects.get(courriel="google.sans.mdp@example.org")
+        self.assertTrue(compte.check_password("NouveauMotDePasse-2026"))
+        self.assertTrue(self.client.get("/api/auth/me/").json()["a_mot_de_passe"])
+        connexion_manuelle = self.client.post(
+            "/api/auth/token/",
+            {
+                "courriel": "google.sans.mdp@example.org",
+                "password": "NouveauMotDePasse-2026",
+            },
+            format="json",
+        )
+        self.assertEqual(connexion_manuelle.status_code, 200)
+
+    def test_changement_mot_de_passe_exige_l_ancien_pour_un_compte_qui_en_a_un(self):
+        self.client.force_authenticate(self.utilisateur)
+
+        sans_ancien = self.client.post(
+            "/api/auth/password/change/",
+            {"nouveau_mot_de_passe": "NouveauMotDePasse-2026"},
+            format="json",
+        )
+
+        self.assertEqual(sans_ancien.status_code, 400)
+        self.utilisateur.refresh_from_db()
+        self.assertTrue(self.utilisateur.check_password("MotDePasseDeTest-2026"))
+
     def test_connexion_est_refusee_sans_jeton_csrf(self):
         client_sans_csrf = APIClient(enforce_csrf_checks=True)
         reponse = client_sans_csrf.post(
@@ -1192,6 +1246,7 @@ class TestsApiMultitenant(TestCase):
             ],
         )
         self.assertEqual(compte["mot_de_passe_demo"], "")
+        self.assertTrue(compte["a_mot_de_passe"])
         self.assertNotIn("password", compte)
 
         AffiliationEtablissement.objects.filter(utilisateur=self.utilisateur).update(role="AUDITEUR")
@@ -1199,6 +1254,62 @@ class TestsApiMultitenant(TestCase):
             f"/api/etablissements/{self.etablissement.id}/utilisateurs/"
         )
         self.assertEqual(reponse_interdite.status_code, 403)
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DJANGO_FRONTEND_URL="https://app.example.org",
+    )
+    def test_affilier_un_compte_existant_a_un_second_etablissement_sans_remplacer_son_acces(self):
+        mail.outbox.clear()
+        compte = Utilisateur.objects.create_user(
+            courriel="compte.google@example.org",
+            password=None,
+            nom_complet="Compte Google existant",
+            role="DIRECTEUR",
+            profil={"google_sub": "google-sub-existant"},
+        )
+        AffiliationEtablissement.objects.create(
+            utilisateur=compte,
+            etablissement=self.autre_etablissement,
+            role="ENSEIGNANT",
+            fonction_locale="Professeur",
+        )
+
+        reponse = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/utilisateurs/",
+            {
+                "nom_complet": "Nom saisi par l’invitant",
+                "courriel": " COMPTE.GOOGLE@example.org ",
+                "id_role": "SCOLARITE",
+                "fonction_locale": "Agent de scolarité",
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(reponse.json()["id"], str(compte.id))
+        self.assertEqual(compte.affiliations.count(), 2)
+        self.assertEqual(compte.nom_complet, "Compte Google existant")
+        self.assertFalse(compte.has_usable_password())
+        self.assertEqual(
+            set(compte.affiliations.values_list("etablissement_id", flat=True)),
+            {self.etablissement.id, self.autre_etablissement.id},
+        )
+        self.assertIn("identifiants sont conservés", mail.outbox[0].body)
+        self.assertIn("créer un mot de passe", mail.outbox[0].body)
+
+        doublon = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/utilisateurs/",
+            {
+                "nom_complet": "Compte déjà affilié",
+                "courriel": "compte.google@example.org",
+                "id_role": "SCOLARITE",
+                "fonction_locale": "Agent de scolarité",
+            },
+            format="json",
+        )
+        self.assertEqual(doublon.status_code, 400)
+        self.assertEqual(compte.affiliations.count(), 2)
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",

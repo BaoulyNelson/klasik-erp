@@ -256,14 +256,17 @@ export const VueProfil: React.FC = () => {
     });
   };
 
-  const gerer_soumission_mot_de_passe = (e: React.FormEvent) => {
+  const gerer_soumission_mot_de_passe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (nouveau_mot_de_passe !== confirmation_mot_de_passe) {
       definir_erreur_mot_de_passe('Les deux nouveaux mots de passe ne correspondent pas.');
       return;
     }
     definir_erreur_mot_de_passe(null);
-    const succes = modifier_mon_mot_de_passe(mot_de_passe_actuel, nouveau_mot_de_passe);
+    const succes = await modifier_mon_mot_de_passe(
+      mot_de_passe_actuel,
+      nouveau_mot_de_passe
+    );
     if (succes) {
       definir_mot_de_passe_actuel('');
       definir_nouveau_mot_de_passe('');
@@ -618,7 +621,11 @@ export const VueProfil: React.FC = () => {
             <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <KeyRound className="w-4 h-4 text-slate-400" />
-                <h3 className="text-sm font-display font-bold">Modifier mon mot de passe</h3>
+                <h3 className="text-sm font-display font-bold">
+                  {utilisateur_actif.a_mot_de_passe === false
+                    ? 'Créer mon mot de passe'
+                    : 'Modifier mon mot de passe'}
+                </h3>
               </div>
               {utilisateur_actif.mot_de_passe_mis_a_jour_le && (
                 <span className="text-[10px] font-mono text-slate-400">
@@ -628,15 +635,22 @@ export const VueProfil: React.FC = () => {
             </div>
 
             <form onSubmit={gerer_soumission_mot_de_passe} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold mb-1">Mot de passe actuel *</label>
-                <ChampMotDePasse
-                  required
-                  value={mot_de_passe_actuel}
-                  onChange={(e) => definir_mot_de_passe_actuel(e.target.value)}
-                  className="w-full py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
+              {utilisateur_actif.a_mot_de_passe !== false ? (
+                <div>
+                  <label className="block font-semibold mb-1">Mot de passe actuel *</label>
+                  <ChampMotDePasse
+                    required
+                    value={mot_de_passe_actuel}
+                    onChange={(e) => definir_mot_de_passe_actuel(e.target.value)}
+                    className="w-full py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+              ) : (
+                <p className="rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 text-indigo-800 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:text-indigo-300">
+                  Votre compte Google n’a pas encore de mot de passe. Vous pouvez en créer un ici
+                  sans perdre la connexion Google.
+                </p>
+              )}
 
               <div>
                 <label className="block font-semibold mb-1">
@@ -683,7 +697,11 @@ export const VueProfil: React.FC = () => {
                 className="w-full"
               >
                 <Lock className="w-4 h-4" />
-                <span>Mettre à jour le mot de passe</span>
+                <span>
+                  {utilisateur_actif.a_mot_de_passe === false
+                    ? 'Créer le mot de passe'
+                    : 'Mettre à jour le mot de passe'}
+                </span>
               </Bouton>
             </form>
           </Carte>

@@ -587,13 +587,18 @@ class ChangerMotDePasseView(APIView):
     def post(self, request):
         profil = dict(request.user.profil or {})
         changement_obligatoire = bool(profil.get("doit_changer_mot_de_passe"))
+        a_mot_de_passe = request.user.has_usable_password()
         ancien = str(request.data.get("ancien_mot_de_passe", ""))
         nouveau = str(request.data.get("nouveau_mot_de_passe", ""))
         if changement_obligatoire and request.user.check_password(nouveau):
             raise ValidationError(
                 {"nouveau_mot_de_passe": "Choisissez un mot de passe différent du mot de passe temporaire."}
             )
-        if not changement_obligatoire and not request.user.check_password(ancien):
+        if (
+            not changement_obligatoire
+            and a_mot_de_passe
+            and not request.user.check_password(ancien)
+        ):
             raise ValidationError({"ancien_mot_de_passe": "Le mot de passe actuel est incorrect."})
         if len(nouveau) < 8:
             raise ValidationError(
@@ -609,9 +614,9 @@ class ChangerMotDePasseView(APIView):
         champs_modifies = ["password"]
         if changement_obligatoire:
             profil["doit_changer_mot_de_passe"] = False
-            profil["mot_de_passe_mis_a_jour_le"] = timezone.now().date().isoformat()
-            request.user.profil = profil
-            champs_modifies.extend(("profil", "modifie_le"))
+        profil["mot_de_passe_mis_a_jour_le"] = timezone.now().date().isoformat()
+        request.user.profil = profil
+        champs_modifies.extend(("profil", "modifie_le"))
         request.user.save(update_fields=champs_modifies)
         return Response({"message": "Votre mot de passe a été changé."})
 

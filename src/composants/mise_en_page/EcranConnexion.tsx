@@ -53,7 +53,7 @@ const TEXTES_CONNEXION: Record<
     label_identifiant: 'Courriel, téléphone ou identifiant',
     label_mdp: 'Mot de passe',
     identifiants_incorrects: 'Identifiants incorrects.',
-    mdp_oublie: 'Mot de passe oublié ?',
+    mdp_oublie: 'Créer / réinitialiser un mot de passe',
     se_connecter: 'Se connecter',
     ou: 'ou',
     google_chargement: 'Connexion avec Google...',
@@ -73,7 +73,7 @@ const TEXTES_CONNEXION: Record<
     label_identifiant: 'Email, phone, or username',
     label_mdp: 'Password',
     identifiants_incorrects: 'Identifiants incorrects.',
-    mdp_oublie: 'Forgot password?',
+    mdp_oublie: 'Set / reset password',
     se_connecter: 'Sign in',
     ou: 'or',
     google_chargement: 'Signing in with Google...',
@@ -93,7 +93,7 @@ const TEXTES_CONNEXION: Record<
     label_identifiant: 'Correo, teléfono o usuario',
     label_mdp: 'Contraseña',
     identifiants_incorrects: 'Identifiants incorrects.',
-    mdp_oublie: '¿Olvidaste tu contraseña?',
+    mdp_oublie: 'Crear / restablecer contraseña',
     se_connecter: 'Entrar',
     ou: 'o',
     google_chargement: 'Conectando con Google...',
@@ -113,7 +113,7 @@ const TEXTES_CONNEXION: Record<
     label_identifiant: 'Imèl, telefòn oswa idantifyan',
     label_mdp: 'Modpas',
     identifiants_incorrects: 'Identifiants incorrects.',
-    mdp_oublie: 'Ou bliye modpas ou?',
+    mdp_oublie: 'Kreye / chanje modpas',
     se_connecter: 'Konekte',
     ou: 'oswa',
     google_chargement: 'Koneksyon ak Google...',
@@ -456,14 +456,14 @@ export const EcranConnexion: React.FC = () => {
                     Réinitialiser votre mot de passe
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Saisissez votre courriel, téléphone ou identifiant pour recevoir un code à 6
-                    chiffres.
+                    Saisissez le courriel du compte pour recevoir un code à 6 chiffres et créer ou
+                    réinitialiser votre mot de passe.
                   </p>
 
                   <form onSubmit={gerer_demande_reinitialisation} className="mt-4 space-y-4">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Courriel, téléphone ou identifiant *
+                        {source_api ? 'Courriel du compte *' : 'Courriel, téléphone ou identifiant *'}
                       </label>
                       <div className="relative">
                         <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -475,7 +475,7 @@ export const EcranConnexion: React.FC = () => {
                             definir_identifiant_reinit(evenement.target.value)
                           }
                           className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
-                          placeholder="nom@etablissement.org"
+                          placeholder={source_api ? 'nom@etablissement.org' : 'Courriel ou identifiant'}
                         />
                       </div>
                     </div>
