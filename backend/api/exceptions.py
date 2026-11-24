@@ -32,6 +32,9 @@ def gestionnaire_erreurs(exception, context):
     elif reponse.status_code == 400:
         message = "Les données envoyées sont invalides."
         details = reponse.data
+    elif reponse.status_code == 409:
+        message = str(exception.detail)
+        details = None
     else:
         message = "La requête n’a pas pu être traitée."
         details = None

@@ -11,7 +11,7 @@ export interface ElementImpactConfirmation {
 interface ProprietesModaleConfirmationAction {
   ouverte: boolean;
   sur_fermeture: () => void;
-  sur_confirmation: () => void;
+  sur_confirmation: () => unknown | Promise<unknown>;
   titre: string;
   sous_titre?: string;
   description: string;
@@ -42,10 +42,13 @@ export const ModaleConfirmationAction: React.FC<ProprietesModaleConfirmationActi
   libelle_annulation = 'Annuler',
 }) => {
   const [phrase_saisie, definir_phrase_saisie] = useState('');
+  const [confirmation_en_cours, definir_confirmation_en_cours] = useState(false);
+  const [erreur_confirmation, definir_erreur_confirmation] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ouverte) {
       definir_phrase_saisie('');
+      definir_erreur_confirmation(null);
     }
   }, [ouverte]);
 
@@ -95,22 +98,45 @@ export const ModaleConfirmationAction: React.FC<ProprietesModaleConfirmationActi
           ? AlertTriangle
           : Info;
 
-  const gerer_confirmation = () => {
-    if (!phrase_correspond) return;
-    sur_confirmation();
+  const gerer_fermeture = () => {
+    if (confirmation_en_cours) return;
+    definir_erreur_confirmation(null);
     sur_fermeture();
+  };
+
+  const gerer_confirmation = async () => {
+    if (!phrase_correspond || confirmation_en_cours) return;
+    definir_confirmation_en_cours(true);
+    definir_erreur_confirmation(null);
+    try {
+      const resultat = await sur_confirmation();
+      if (resultat !== false) sur_fermeture();
+    } catch (erreur: unknown) {
+      definir_erreur_confirmation(
+        erreur instanceof Error
+          ? erreur.message
+          : 'La confirmation a échoué. Vérifiez votre connexion et réessayez.'
+      );
+    } finally {
+      definir_confirmation_en_cours(false);
+    }
   };
 
   return (
     <Modale
       ouverte={ouverte}
-      sur_fermeture={sur_fermeture}
+      sur_fermeture={gerer_fermeture}
       titre={titre}
       sous_titre={sous_titre}
       classe_largeur_max="max-w-lg"
       pied_page={
         <>
-          <Bouton type="button" variante="secondaire" onClick={sur_fermeture}>
+          <Bouton
+            type="button"
+            variante="secondaire"
+            disabled={confirmation_en_cours}
+            onClick={gerer_fermeture}
+          >
             {libelle_annulation}
           </Bouton>
           <Bouton
@@ -121,15 +147,23 @@ export const ModaleConfirmationAction: React.FC<ProprietesModaleConfirmationActi
                 ? 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500'
                 : undefined
             }
-            disabled={!phrase_correspond}
+            disabled={!phrase_correspond || confirmation_en_cours}
             onClick={gerer_confirmation}
           >
-            {libelle_confirmation}
+            {confirmation_en_cours ? 'Traitement…' : libelle_confirmation}
           </Bouton>
         </>
       }
     >
       <div className="space-y-4 text-xs">
+        {erreur_confirmation && (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-200"
+          >
+            {erreur_confirmation}
+          </div>
+        )}
         <div
           className={`rounded-xl border p-4 flex items-start gap-3.5 ${styles_tonalite.fond_banniere}`}
         >

@@ -64,12 +64,12 @@ export const VueMoteurTerminologie: React.FC = () => {
     definir_bloquer_documents(etablissement_actif.bloquer_documents_si_impaye);
   }, [etablissement_actif]);
 
-  const gerer_enregistrement = (evenement: React.FormEvent) => {
+  const gerer_enregistrement = async (evenement: React.FormEvent) => {
     evenement.preventDefault();
     if (!peut_modifier) return;
     const taux_analyse = Number(taux_usd) > 0 ? Number(taux_usd) : etablissement_actif.taux_change_usd;
     const profil = PROFILS_PAYS[code_pays];
-    mettre_a_jour_etablissement(etablissement_actif.id, {
+    const succes = await mettre_a_jour_etablissement(etablissement_actif.id, {
       nom: nom.trim() || etablissement_actif.nom,
       code_pays,
       nom_pays: code_pays === 'INTL' ? etablissement_actif.nom_pays : profil.nom,
@@ -84,7 +84,7 @@ export const VueMoteurTerminologie: React.FC = () => {
       echelle_notation,
       bloquer_documents_si_impaye: bloquer_documents,
     });
-    definir_devise_active(devise_defaut);
+    if (succes) definir_devise_active(devise_defaut);
   };
 
   const lignes_comparatives: {

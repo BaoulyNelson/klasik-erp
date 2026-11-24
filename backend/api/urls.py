@@ -13,6 +13,7 @@ from api.tenant_views import (
     ListeEtablissementsPlateformeView,
     ListeUtilisateursTenantView,
     PermissionsRolesTenantView,
+    PromouvoirAnneeAcademiqueView,
 )
 
 urlpatterns = [
@@ -36,6 +37,11 @@ urlpatterns = [
         "etablissements/<str:id_etablissement>/",
         DetailEtablissementTenantView.as_view(),
         name="detail-etablissement",
+    ),
+    path(
+        "etablissements/<str:id_etablissement>/annee-academique/promouvoir/",
+        PromouvoirAnneeAcademiqueView.as_view(),
+        name="promouvoir-annee-academique",
     ),
     path(
         "etablissements/<str:id_etablissement>/permissions/",

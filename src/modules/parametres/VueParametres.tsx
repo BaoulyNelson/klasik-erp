@@ -147,8 +147,9 @@ export const VueParametres: React.FC = () => {
     if (!fichier || !peut_gerer) return;
     try {
       const url_donnees = await traiter_image_logo(fichier, 256);
-      definir_url_logo(url_donnees);
-      mettre_a_jour_etablissement(etablissement_actif.id, { url_logo: url_donnees });
+      if (await mettre_a_jour_etablissement(etablissement_actif.id, { url_logo: url_donnees })) {
+        definir_url_logo(url_donnees);
+      }
     } catch (erreur) {
       ajouter_toast({
         titre: erreur instanceof Error ? erreur.message : 'Impossible de charger ce logo',
@@ -159,10 +160,11 @@ export const VueParametres: React.FC = () => {
     }
   };
 
-  const gerer_suppression_logo = () => {
+  const gerer_suppression_logo = async () => {
     if (!peut_gerer) return;
-    definir_url_logo(undefined);
-    mettre_a_jour_etablissement(etablissement_actif.id, { url_logo: undefined });
+    if (await mettre_a_jour_etablissement(etablissement_actif.id, { url_logo: undefined })) {
+      definir_url_logo(undefined);
+    }
   };
 
   const profil_pays_actif = PROFILS_PAYS[etablissement_actif.code_pays];
@@ -229,7 +231,7 @@ export const VueParametres: React.FC = () => {
           etablissement_actif.devise_defaut
         );
 
-  const gerer_ajout_compte_bancaire = (e: React.FormEvent) => {
+  const gerer_ajout_compte_bancaire = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!peut_gerer || !nouvelle_banque.trim() || !nouveau_numero_compte.trim()) return;
     const cree: CompteBancaire = {
@@ -241,11 +243,14 @@ export const VueParametres: React.FC = () => {
       par_defaut: comptes_bancaires_effectifs.length === 0,
       actif: true,
     };
-    mettre_a_jour_etablissement(etablissement_actif.id, {
-      comptes_bancaires: [...comptes_bancaires_effectifs, cree],
-    });
-    definir_nouvelle_banque('');
-    definir_nouveau_numero_compte('');
+    if (
+      await mettre_a_jour_etablissement(etablissement_actif.id, {
+        comptes_bancaires: [...comptes_bancaires_effectifs, cree],
+      })
+    ) {
+      definir_nouvelle_banque('');
+      definir_nouveau_numero_compte('');
+    }
   };
 
   const gerer_bascule_compte_actif = (id_compte: string) => {

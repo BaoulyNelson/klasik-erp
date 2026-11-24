@@ -1,4 +1,6 @@
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -60,6 +62,7 @@ class DocumentOfficielViewSet(viewsets.ModelViewSet):
         self.verifier_permission("documents:voir")
         return super().retrieve(request, *args, **kwargs)
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         self.verifier_permission("documents:emettre")
         apprenant = Apprenant.objects.filter(
@@ -99,6 +102,25 @@ class DocumentOfficielViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="emettre")
+    @transaction.atomic
     def emettre(self, request, *args, **kwargs):
         self.verifier_permission("documents:emettre")
-        return Response(self.get_serializer(self.get_object()).data)
+        document = self.get_object()
+        document.emis_le = timezone.localdate().isoformat()
+        document.emis_par = request.user.nom_complet
+        document.save(update_fields=("emis_le", "emis_par"))
+        from donnees.models import EntreeAuditApi
+
+        EntreeAuditApi.objects.create(
+            etablissement=self.etablissement_courant,
+            utilisateur=request.user,
+            nom_acteur=request.user.nom_complet,
+            role_acteur=role_utilisateur_etablissement(
+                request.user,
+                self.etablissement_courant,
+            ),
+            action="EMISSION",
+            collection="documents",
+            id_objet=document.id,
+        )
+        return Response(self.get_serializer(document).data)

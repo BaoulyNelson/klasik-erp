@@ -1183,9 +1183,9 @@ export const VueAdministrationPlateforme: React.FC = () => {
       <ModaleConfirmationAction
         ouverte={Boolean(cible_suppression)}
         sur_fermeture={() => definir_cible_suppression(null)}
-        sur_confirmation={() => {
-          if (cible_suppression) supprimer_etablissement(cible_suppression.id);
-        }}
+        sur_confirmation={() =>
+          cible_suppression ? supprimer_etablissement(cible_suppression.id) : false
+        }
         tonalite="danger"
         titre={`Supprimer définitivement ${cible_suppression?.nom_court ?? ''}`}
         sous_titre={`${cible_suppression?.nom ?? ''} · Code ${cible_suppression?.code ?? ''}`}
@@ -1227,9 +1227,9 @@ export const VueAdministrationPlateforme: React.FC = () => {
       <ModaleConfirmationAction
         ouverte={Boolean(cible_suspension)}
         sur_fermeture={() => definir_cible_suspension(null)}
-        sur_confirmation={() => {
-          if (cible_suspension) basculer_statut_etablissement(cible_suspension.id);
-        }}
+        sur_confirmation={() =>
+          cible_suspension ? basculer_statut_etablissement(cible_suspension.id) : false
+        }
         tonalite="avertissement"
         titre={`Suspendre ${cible_suspension?.nom_court ?? ''}`}
         sous_titre={`${cible_suspension?.nom ?? ''} · Code ${cible_suspension?.code ?? ''}`}

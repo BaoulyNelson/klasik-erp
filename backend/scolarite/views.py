@@ -19,10 +19,28 @@ from .models import (
 )
 from .serializers import (
     ApprenantSerializer,
+    ContactTuteurSerializer,
+    EcheancePaiementSerializer,
     ElementPedagogiqueSerializer,
     InscriptionApprenantSerializer,
     UniteAcademiqueSerializer,
 )
+
+
+def _valider_donnees_enfants(donnees, champ, serializer_class):
+    elements = donnees.get(champ, [])
+    if elements is None:
+        return []
+    if not isinstance(elements, list):
+        raise ValidationError({champ: "Cette valeur doit être une liste."})
+    resultats = []
+    for index, element in enumerate(elements):
+        if not isinstance(element, dict):
+            raise ValidationError({champ: f"L’élément {index + 1} est invalide."})
+        serializer = serializer_class(data=element)
+        serializer.is_valid(raise_exception=True)
+        resultats.append(serializer.validated_data)
+    return resultats
 
 
 class VueTenantMixin:
@@ -167,8 +185,15 @@ class ApprenantViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("apprenants:voir")
         return super().retrieve(request, *args, **kwargs)
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         etablissement = self.verifier_permission("apprenants:gerer")
+        tuteurs = _valider_donnees_enfants(request.data, "tuteurs", ContactTuteurSerializer)
+        echeancier = _valider_donnees_enfants(
+            request.data,
+            "echeancier",
+            EcheancePaiementSerializer,
+        )
         unite = UniteAcademique.objects.filter(
             etablissement=etablissement,
             pk=request.data.get("id_unite"),
@@ -178,39 +203,44 @@ class ApprenantViewSet(VueTenantMixin, viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         apprenant = serializer.save(etablissement=etablissement, unite=unite)
-        for tuteur in request.data.get("tuteurs", []) or []:
+        for tuteur in tuteurs:
             ContactTuteur.objects.create(apprenant=apprenant, **tuteur)
-        for echeance in request.data.get("echeancier", []) or []:
+        for echeance in echeancier:
             EcheancePaiement.objects.create(
-                id=echeance["id"],
                 etablissement=etablissement,
                 apprenant=apprenant,
-                libelle=echeance.get("libelle", ""),
-                date_echeance=echeance.get("date_echeance", ""),
-                montant_du_htg=echeance.get("montant_du_htg", 0),
-                montant_paye_htg=echeance.get("montant_paye_htg", 0),
-                statut=echeance.get("statut", "A_PAYER"),
+                **echeance,
             )
         return Response(self.get_serializer(apprenant).data, status=status.HTTP_201_CREATED)
 
+    @transaction.atomic
     def perform_update(self, serializer):
+        tuteurs = (
+            _valider_donnees_enfants(self.request.data, "tuteurs", ContactTuteurSerializer)
+            if "tuteurs" in self.request.data
+            else None
+        )
+        echeancier = (
+            _valider_donnees_enfants(
+                self.request.data,
+                "echeancier",
+                EcheancePaiementSerializer,
+            )
+            if "echeancier" in self.request.data
+            else None
+        )
         apprenant = serializer.save()
-        if "tuteurs" in self.request.data:
+        if tuteurs is not None:
             apprenant.tuteurs.all().delete()
-            for tuteur in self.request.data.get("tuteurs", []) or []:
+            for tuteur in tuteurs:
                 ContactTuteur.objects.create(apprenant=apprenant, **tuteur)
-        if "echeancier" in self.request.data:
+        if echeancier is not None:
             apprenant.echeancier.all().delete()
-            for echeance in self.request.data.get("echeancier", []) or []:
+            for echeance in echeancier:
                 EcheancePaiement.objects.create(
-                    id=echeance["id"],
                     etablissement=apprenant.etablissement,
                     apprenant=apprenant,
-                    libelle=echeance.get("libelle", ""),
-                    date_echeance=echeance.get("date_echeance", ""),
-                    montant_du_htg=echeance.get("montant_du_htg", 0),
-                    montant_paye_htg=echeance.get("montant_paye_htg", 0),
-                    statut=echeance.get("statut", "A_PAYER"),
+                    **echeance,
                 )
 
     def update(self, request, *args, **kwargs):
@@ -316,6 +346,7 @@ class InscriptionViewSet(VueTenantMixin, viewsets.ModelViewSet):
         instance.delete()
 
     @action(detail=True, methods=["post"], url_path="annuler")
+    @transaction.atomic
     def annuler(self, request, *args, **kwargs):
         self.verifier_permission("admissions:gerer")
         inscription = self.get_object()
@@ -343,6 +374,7 @@ class InscriptionViewSet(VueTenantMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(inscription).data)
 
     @action(detail=True, methods=["post"], url_path="archiver")
+    @transaction.atomic
     def archiver(self, request, *args, **kwargs):
         self.verifier_permission("admissions:gerer")
         inscription = self.get_object()

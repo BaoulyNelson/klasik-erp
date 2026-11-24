@@ -54,12 +54,15 @@ export const VueComptes: React.FC = () => {
   const [mot_de_passe_demo, definir_mot_de_passe_demo] = useState('');
   const [double_facteur_actif, definir_double_facteur_actif] = useState(true);
   const [changement_obligatoire_creation, definir_changement_obligatoire_creation] = useState(true);
+  const [creation_en_cours, definir_creation_en_cours] = useState(false);
 
   const [id_utilisateur_edition_mdp, definir_id_utilisateur_edition_mdp] = useState<string | null>(null);
   const [nouveau_mot_de_passe, definir_nouveau_mot_de_passe] = useState('');
   const [changement_obligatoire_reinit, definir_changement_obligatoire_reinit] = useState(true);
+  const [reinitialisation_en_cours, definir_reinitialisation_en_cours] = useState(false);
 
   const [utilisateur_en_edition, definir_utilisateur_en_edition] = useState<CompteUtilisateur | null>(null);
+  const [edition_en_cours, definir_edition_en_cours] = useState(false);
   const [edit_nom_complet, definir_edit_nom_complet] = useState('');
   const [edit_courriel, definir_edit_courriel] = useState('');
   const [edit_telephone, definir_edit_telephone] = useState('');
@@ -104,9 +107,9 @@ export const VueComptes: React.FC = () => {
     }
   };
 
-  const gerer_creation_utilisateur = (evenement: React.FormEvent) => {
+  const gerer_creation_utilisateur = async (evenement: React.FormEvent) => {
     evenement.preventDefault();
-    if (!nom_complet.trim() || !courriel.trim()) return;
+    if (creation_en_cours || !nom_complet.trim() || !courriel.trim()) return;
     const politique_mot_de_passe =
       source_api && !mot_de_passe_demo
         ? { valide: true, message: '' }
@@ -119,20 +122,28 @@ export const VueComptes: React.FC = () => {
       });
       return;
     }
-    creer_utilisateur_etablissement({
-      nom_complet,
-      courriel,
-      telephone: telephone || etablissement_actif.telephone,
-      id_role,
-      fonction_locale,
-      mot_de_passe_demo,
-      double_facteur_actif,
-      doit_changer_mot_de_passe: changement_obligatoire_creation,
-    });
-    definir_nom_complet('');
-    definir_courriel('');
-    definir_telephone('');
-    definir_fonction_locale('');
+    definir_creation_en_cours(true);
+    try {
+      const succes = await creer_utilisateur_etablissement({
+        nom_complet,
+        courriel,
+        telephone: telephone || etablissement_actif.telephone,
+        id_role,
+        fonction_locale,
+        mot_de_passe_demo,
+        double_facteur_actif,
+        doit_changer_mot_de_passe: changement_obligatoire_creation,
+      });
+      if (succes) {
+        definir_nom_complet('');
+        definir_courriel('');
+        definir_telephone('');
+        definir_fonction_locale('');
+        definir_mot_de_passe_demo('');
+      }
+    } finally {
+      definir_creation_en_cours(false);
+    }
   };
 
   return (
@@ -314,11 +325,12 @@ export const VueComptes: React.FC = () => {
               type="submit"
               variante="principal"
               taille="sm"
+              disabled={creation_en_cours}
               classe_accent={theme_etab.bouton_principal}
               className="w-full"
             >
               <Plus className="w-4 h-4" />
-              <span>Créer et activer le compte</span>
+              <span>{creation_en_cours ? 'Création…' : 'Créer et activer le compte'}</span>
             </Bouton>
           </form>
         </Carte>
@@ -529,21 +541,29 @@ export const VueComptes: React.FC = () => {
                         <Bouton
                           variante="principal"
                           taille="sm"
+                          disabled={reinitialisation_en_cours}
                           classe_accent={theme_etab.bouton_principal}
-                          onClick={() => {
-                            const succes = reinitialiser_mot_de_passe_utilisateur(
-                              utilisateur.id,
-                              nouveau_mot_de_passe,
-                              { doit_changer_mot_de_passe: changement_obligatoire_reinit }
-                            );
-                            if (succes) definir_id_utilisateur_edition_mdp(null);
+                          onClick={async () => {
+                            if (reinitialisation_en_cours) return;
+                            definir_reinitialisation_en_cours(true);
+                            try {
+                              const succes = await reinitialiser_mot_de_passe_utilisateur(
+                                utilisateur.id,
+                                nouveau_mot_de_passe,
+                                { doit_changer_mot_de_passe: changement_obligatoire_reinit }
+                              );
+                              if (succes) definir_id_utilisateur_edition_mdp(null);
+                            } finally {
+                              definir_reinitialisation_en_cours(false);
+                            }
                           }}
                         >
-                          Enregistrer
+                          {reinitialisation_en_cours ? 'Enregistrement…' : 'Enregistrer'}
                         </Bouton>
                         <Bouton
                           variante="fantome"
                           taille="sm"
+                          disabled={reinitialisation_en_cours}
                           onClick={() => definir_id_utilisateur_edition_mdp(null)}
                         >
                           Annuler
@@ -577,23 +597,36 @@ export const VueComptes: React.FC = () => {
       {/* Modale d'édition du compte utilisateur */}
       <Modale
         ouverte={Boolean(utilisateur_en_edition)}
-        sur_fermeture={() => definir_utilisateur_en_edition(null)}
+        sur_fermeture={() => {
+          if (!edition_en_cours) definir_utilisateur_en_edition(null);
+        }}
         titre="Modifier les informations du compte"
         sous_titre={utilisateur_en_edition?.nom_complet}
         classe_largeur_max="max-w-lg"
       >
         {utilisateur_en_edition && (
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              if (!edit_nom_complet.trim() || !edit_courriel.trim()) return;
-              modifier_utilisateur_etablissement(utilisateur_en_edition.id, {
-                nom_complet: edit_nom_complet.trim(),
-                courriel: edit_courriel.trim(),
-                telephone: edit_telephone.trim(),
-                fonction_locale: edit_fonction_locale.trim(),
-              });
-              definir_utilisateur_en_edition(null);
+              if (
+                edition_en_cours ||
+                !edit_nom_complet.trim() ||
+                !edit_courriel.trim()
+              ) {
+                return;
+              }
+              definir_edition_en_cours(true);
+              try {
+                const succes = await modifier_utilisateur_etablissement(utilisateur_en_edition.id, {
+                  nom_complet: edit_nom_complet.trim(),
+                  courriel: edit_courriel.trim(),
+                  telephone: edit_telephone.trim(),
+                  fonction_locale: edit_fonction_locale.trim(),
+                });
+                if (succes) definir_utilisateur_en_edition(null);
+              } finally {
+                definir_edition_en_cours(false);
+              }
             }}
             className="space-y-3 text-xs"
           >
@@ -646,6 +679,7 @@ export const VueComptes: React.FC = () => {
                 type="button"
                 variante="fantome"
                 taille="sm"
+                disabled={edition_en_cours}
                 onClick={() => definir_utilisateur_en_edition(null)}
               >
                 Annuler
@@ -654,9 +688,10 @@ export const VueComptes: React.FC = () => {
                 type="submit"
                 variante="principal"
                 taille="sm"
+                disabled={edition_en_cours}
                 classe_accent={theme_etab.bouton_principal}
               >
-                Enregistrer
+                {edition_en_cours ? 'Enregistrement…' : 'Enregistrer'}
               </Bouton>
             </div>
           </form>
@@ -666,11 +701,11 @@ export const VueComptes: React.FC = () => {
       <ModaleConfirmationAction
         ouverte={Boolean(cible_suppression)}
         sur_fermeture={() => definir_cible_suppression(null)}
-        sur_confirmation={() => {
-          if (cible_suppression) {
-            supprimer_utilisateur_etablissement(cible_suppression.id);
-          }
-        }}
+        sur_confirmation={() =>
+          cible_suppression
+            ? supprimer_utilisateur_etablissement(cible_suppression.id)
+            : false
+        }
         tonalite="danger"
         titre="Supprimer ce compte utilisateur ?"
         sous_titre={cible_suppression?.courriel}

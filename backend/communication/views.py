@@ -1,4 +1,5 @@
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -206,6 +207,7 @@ class FilDiscussionDirecteViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("messagerie:utiliser")
         return super().retrieve(request, *args, **kwargs)
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         self.verifier_permission("messagerie:utiliser")
         serializer = self.get_serializer(data=request.data)
@@ -213,10 +215,12 @@ class FilDiscussionDirecteViewSet(VueTenantMixin, viewsets.ModelViewSet):
         fil = serializer.save(etablissement=self.etablissement_courant)
         return Response(self.get_serializer(fil).data, status=201)
 
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         self.verifier_permission("messagerie:utiliser")
         return super().update(request, *args, **kwargs)
 
+    @transaction.atomic
     def partial_update(self, request, *args, **kwargs):
         self.verifier_permission("messagerie:utiliser")
         return super().partial_update(request, *args, **kwargs)

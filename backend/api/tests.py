@@ -634,13 +634,28 @@ class TestsAuthentificationApi(TestCase):
             effacement_logo.json()["nom_plateforme"],
             valeurs["nom_plateforme"],
         )
-
         invalide = self.client.patch(
             "/api/plateforme/configuration/",
             {"site_web": "pas une url"},
             format="json",
         )
         self.assertEqual(invalide.status_code, 400)
+
+    def test_patch_configuration_plateforme_invalide_ne_cree_pas_de_ligne_partielle(self):
+        superutilisateur = Utilisateur.objects.create_superuser(
+            "configuration.invalide@example.org",
+            "MotDePasseConfiguration-2026",
+        )
+        self.client.force_authenticate(superutilisateur)
+
+        reponse = self.client.patch(
+            "/api/plateforme/configuration/",
+            {"couleur_marque": "couleur-inconnue"},
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 400)
+        self.assertFalse(ConfigurationMarquePlateforme.objects.exists())
 
     def test_creation_etablissement_accepte_un_logo_image_de_plus_de_500_caracteres(self):
         logo = "data:image/png;base64," + base64.b64encode(
@@ -1071,6 +1086,132 @@ class TestsApiMultitenant(TestCase):
 
         self.assertEqual(reponse.status_code, 400)
         self.assertEqual(EnregistrementMetier.objects.count(), 0)
+
+    def test_promotion_annee_academique_persiste_l_annee_et_tous_les_promus(self):
+        self.etablissement.annee_academique = "2025–2026"
+        self.etablissement.note_passage = 10
+        self.etablissement.save(update_fields=("annee_academique", "note_passage"))
+        unite = UniteAcademique.objects.create(
+            id="unite-promotion-a",
+            etablissement=self.etablissement,
+            code="PROMO-A",
+            nom="Unité promotion",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        unite_autre = UniteAcademique.objects.create(
+            id="unite-promotion-b",
+            etablissement=self.autre_etablissement,
+            code="PROMO-B",
+            nom="Unité autre",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        cas = (
+            ("apprenant-promotion-1", unite, 1, 10),
+            ("apprenant-promotion-2", unite, 4, 12),
+            ("apprenant-promotion-echec", unite, 2, 9.99),
+            ("apprenant-promotion-plafond", unite, 5, 100),
+            ("apprenant-promotion-autre-tenant", unite_autre, 1, 100),
+        )
+        apprenants = {}
+        for identifiant, unite_cible, indice, moyenne in cas:
+            etablissement = unite_cible.etablissement
+            apprenants[identifiant] = Apprenant.objects.create(
+                id=identifiant,
+                etablissement=etablissement,
+                unite=unite_cible,
+                matricule=identifiant.upper(),
+                prenom="Élève",
+                nom=identifiant,
+                sexe="F",
+                indice_etape=indice,
+                moyenne_generale=moyenne,
+            )
+
+        reponse = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/annee-academique/promouvoir/",
+            {"nouveau_libelle_annee": "2026–2027"},
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(
+            reponse.json(),
+            {
+                "annee_academique": "2026–2027",
+                "nombre_promus": 2,
+                "ids_apprenants_promus": [
+                    "apprenant-promotion-1",
+                    "apprenant-promotion-2",
+                ],
+            },
+        )
+        self.etablissement.refresh_from_db()
+        self.assertEqual(self.etablissement.annee_academique, "2026–2027")
+        for identifiant, apprenant in apprenants.items():
+            apprenant.refresh_from_db()
+            indice_attendu = {
+                "apprenant-promotion-1": 2,
+                "apprenant-promotion-2": 5,
+                "apprenant-promotion-echec": 2,
+                "apprenant-promotion-plafond": 5,
+                "apprenant-promotion-autre-tenant": 1,
+            }[identifiant]
+            self.assertEqual(apprenant.indice_etape, indice_attendu)
+        self.assertTrue(
+            EntreeAuditApi.objects.filter(
+                etablissement=self.etablissement,
+                utilisateur=self.utilisateur,
+                action="PROMOTION",
+                collection="annee_academique",
+                id_objet="2026–2027",
+            ).exists()
+        )
+
+    def test_promotion_annee_academique_interdite_ne_modifie_aucune_donnee(self):
+        self.autre_etablissement.annee_academique = "2025–2026"
+        self.autre_etablissement.note_passage = 10
+        self.autre_etablissement.save(
+            update_fields=("annee_academique", "note_passage")
+        )
+        unite = UniteAcademique.objects.create(
+            id="unite-promotion-interdite",
+            etablissement=self.autre_etablissement,
+            code="PROMO-INTERDITE",
+            nom="Unité autre",
+            categorie="Secondaire",
+            niveau_ou_duree="Année",
+        )
+        apprenant = Apprenant.objects.create(
+            id="apprenant-promotion-interdite",
+            etablissement=self.autre_etablissement,
+            unite=unite,
+            matricule="PROMO-INTERDITE-001",
+            prenom="Élève",
+            nom="Autre",
+            sexe="F",
+            indice_etape=2,
+            moyenne_generale=15,
+        )
+
+        reponse = self.client.post(
+            f"/api/etablissements/{self.autre_etablissement.id}/annee-academique/promouvoir/",
+            {"nouveau_libelle_annee": "2026–2027"},
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 403)
+        self.autre_etablissement.refresh_from_db()
+        apprenant.refresh_from_db()
+        self.assertEqual(self.autre_etablissement.annee_academique, "2025–2026")
+        self.assertEqual(apprenant.indice_etape, 2)
+        self.assertFalse(
+            EntreeAuditApi.objects.filter(
+                etablissement=self.autre_etablissement,
+                action="PROMOTION",
+            ).exists()
+        )
 
     def test_auditeur_ne_peut_pas_modifier_les_donnees(self):
         AffiliationEtablissement.objects.filter(utilisateur=self.utilisateur).update(role="AUDITEUR")
@@ -2128,6 +2269,84 @@ class TestsIsolementSupervisionPlateforme(TestCase):
         self.etablissement_client.refresh_from_db()
         self.assertEqual(self.etablissement_client.nom, "Établissement client")
 
+    def test_suppression_plateforme_persiste_apres_confirmation_par_code(self):
+        self.client.force_authenticate(self.super_admin)
+
+        suppression = self.client.delete(
+            f"/api/plateforme/etablissements/{self.etablissement_client.id}/",
+            {"code_confirmation": self.etablissement_client.code},
+            format="json",
+        )
+
+        self.assertEqual(suppression.status_code, 204, suppression.data)
+        self.assertFalse(
+            Etablissement.objects.filter(pk=self.etablissement_client.id).exists()
+        )
+
+    def test_suppression_plateforme_refuse_sans_confirmation_ou_si_audit_a_conserver(self):
+        self.client.force_authenticate(self.super_admin)
+        url = f"/api/plateforme/etablissements/{self.etablissement_client.id}/"
+        sans_confirmation = self.client.delete(url, {}, format="json")
+        EntreeAuditApi.objects.create(
+            etablissement=self.etablissement_client,
+            utilisateur=self.super_admin,
+            nom_acteur=self.super_admin.nom_complet,
+            role_acteur="SUPER_ADMIN",
+            action="MODIFICATION",
+            collection="abonnements",
+            id_objet=self.etablissement_client.id,
+        )
+
+        refusee = self.client.delete(
+            url,
+            {"code_confirmation": self.etablissement_client.code},
+            format="json",
+        )
+
+        self.assertEqual(sans_confirmation.status_code, 400)
+        self.assertEqual(refusee.status_code, 409)
+        self.assertIn("journal d’audit", refusee.json()["message"])
+        self.assertTrue(
+            Etablissement.objects.filter(pk=self.etablissement_client.id).exists()
+        )
+        self.assertEqual(
+            EntreeAuditApi.objects.filter(
+                etablissement=self.etablissement_client
+            ).count(),
+            1,
+        )
+
+    def test_suppression_plateforme_refuse_un_tenant_non_affilie_et_un_fichier_conserve(self):
+        self.client.force_authenticate(self.utilisateur)
+        url = f"/api/plateforme/etablissements/{self.etablissement_client.id}/"
+        refusee_sans_role_plateforme = self.client.delete(
+            url,
+            {"code_confirmation": self.etablissement_client.code},
+            format="json",
+        )
+        self.client.force_authenticate(self.super_admin)
+        FichierTeleverse.objects.create(
+            etablissement=self.etablissement_client,
+            proprietaire=self.super_admin,
+            fichier="",
+            nom_fichier="archive.pdf",
+            type_mime="application/pdf",
+            taille_octets=1,
+        )
+
+        refusee_fichier = self.client.delete(
+            url,
+            {"code_confirmation": self.etablissement_client.code},
+            format="json",
+        )
+
+        self.assertEqual(refusee_sans_role_plateforme.status_code, 403)
+        self.assertEqual(refusee_fichier.status_code, 409)
+        self.assertIn("fichiers téléversés", refusee_fichier.json()["message"])
+        self.assertTrue(
+            Etablissement.objects.filter(pk=self.etablissement_client.id).exists()
+        )
+
     def test_palette_personnalisee_est_validee_et_persistante(self):
         self.client.force_authenticate(self.utilisateur)
         url = f"/api/etablissements/{self.etablissement_affilie.id}/"
@@ -2256,6 +2475,9 @@ class TestsPreuvesDomainesRelationnels(TestCase):
         document_reponse = self.client.get(
             f"/api/etablissements/{self.tenant.id}/documents/{document.id}/"
         )
+        emission = self.client.post(
+            f"/api/etablissements/{self.tenant.id}/documents/{document.id}/emettre/"
+        )
         communication_reponse = self.client.get(
             f"/api/etablissements/{self.tenant.id}/communications/{message.id}/"
         )
@@ -2272,6 +2494,18 @@ class TestsPreuvesDomainesRelationnels(TestCase):
         self.assertEqual(document_reponse.status_code, 200)
         self.assertEqual(document_reponse.json()["id_apprenant"], "apprenant-preuves")
         self.assertEqual(document_reponse.json()["empreinte_verification"], "empreinte-preuve")
+        self.assertEqual(emission.status_code, 200, emission.data)
+        document.refresh_from_db()
+        self.assertEqual(document.emis_par, self.utilisateur.nom_complet)
+        self.assertTrue(
+            EntreeAuditApi.objects.filter(
+                etablissement=self.tenant,
+                utilisateur=self.utilisateur,
+                action="EMISSION",
+                collection="documents",
+                id_objet=document.id,
+            ).exists()
+        )
         self.assertEqual(communication_reponse.status_code, 200)
         self.assertEqual(communication_reponse.json()["nombre_destinataires"], 0)
         self.assertEqual(notification_reponse.status_code, 200)
@@ -3421,6 +3655,32 @@ class TestsContratsScolariteRelationnelle(TestCase):
         self.assertEqual(donnees["statut_paiement"], "PARTIEL")
         self.assertEqual(donnees["tuteurs"], [])
         self.assertEqual(donnees["echeancier"], [])
+
+    def test_creation_apprenant_refuse_un_tuteur_invalide_sans_creation_partielle(self):
+        reponse = self.client.post(
+            f"/api/etablissements/{self.etablissement.id}/apprenants/",
+            {
+                "id": "apprenant-avec-tuteur-invalide",
+                "id_unite": self.unite.id,
+                "matricule": "REL-INVALID-001",
+                "prenom": "Ada",
+                "nom": "Invalide",
+                "sexe": "F",
+                "tuteurs": [
+                    {
+                        "nom_complet": "Tuteur invalide",
+                        "lien_parente": "Autre",
+                        "telephone": "555-0100",
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertFalse(
+            Apprenant.objects.filter(pk="apprenant-avec-tuteur-invalide").exists()
+        )
 
     def test_frais_unite_negatifs_sont_refuses_par_l_api(self):
         reponse = self.client.post(

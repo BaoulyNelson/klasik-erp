@@ -9,7 +9,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.conf import settings
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Prefetch
+from django.db.models import Count, F, Prefetch
+from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.core.validators import validate_email
 from django.utils import timezone
@@ -40,7 +41,7 @@ from api.permissions import (
     permissions_utilisateur,
     role_utilisateur_etablissement,
 )
-from donnees.models import EnregistrementMetier, EntreeAuditApi
+from donnees.models import EnregistrementMetier, EntreeAuditApi, FichierTeleverse
 from etablissements.models import (
     Etablissement,
     HistoriqueAbonnementSaas,
@@ -72,6 +73,16 @@ class EchecCourrielInvitation(APIException):
     status_code = 503
     default_detail = "Le compte n’a pas été créé car le courriel d’invitation n’a pas pu être envoyé."
     default_code = "courriel_invitation_indisponible"
+
+
+class SuppressionEtablissementRefusee(APIException):
+    status_code = 409
+    default_code = "suppression_etablissement_refusee"
+
+
+class PromotionAnneeAcademiqueRefusee(APIException):
+    status_code = 409
+    default_code = "promotion_annee_academique_refusee"
 
 
 def _valider_collection(collection: str) -> tuple[str | None, str | None]:
@@ -822,6 +833,51 @@ class DetailEtablissementPlateformeView(APIView):
             )
         )
 
+    @extend_schema(
+        operation_id="supprimerEtablissementPlateforme",
+        request=inline_serializer(
+            name="ConfirmationSuppressionEtablissement",
+            fields={"code_confirmation": serializers.CharField()},
+        ),
+        responses={204: None},
+    )
+    @transaction.atomic
+    def delete(self, request, id_etablissement: str):
+        ListeEtablissementsPlateformeView._verifier_administrateur_plateforme(request)
+        etablissement = get_object_or_404(
+            Etablissement.objects.select_for_update(),
+            pk=id_etablissement,
+        )
+        if not isinstance(request.data, dict) or request.data.get("code_confirmation") != etablissement.code:
+            raise ValidationError(
+                {"code_confirmation": "Saisissez exactement le code de l’établissement pour confirmer."}
+            )
+        if etablissement.est_actif and not Etablissement.objects.filter(
+            est_actif=True
+        ).exclude(pk=etablissement.pk).exists():
+            raise SuppressionEtablissementRefusee(
+                "Le dernier établissement actif de la plateforme ne peut pas être supprimé."
+            )
+        if EntreeAuditApi.objects.filter(etablissement=etablissement).exists():
+            raise SuppressionEtablissementRefusee(
+                "La suppression est bloquée car le journal d’audit de cet établissement doit être conservé."
+            )
+        if HistoriqueAbonnementSaas.objects.filter(etablissement=etablissement).exists():
+            raise SuppressionEtablissementRefusee(
+                "La suppression est bloquée car l’historique d’abonnement doit être conservé."
+            )
+        if FichierTeleverse.objects.filter(etablissement=etablissement).exists():
+            raise SuppressionEtablissementRefusee(
+                "La suppression est bloquée tant que des fichiers téléversés sont conservés."
+            )
+        try:
+            etablissement.delete()
+        except ProtectedError as erreur:
+            raise SuppressionEtablissementRefusee(
+                "La suppression est bloquée par des références protégées."
+            ) from erreur
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class DetailEtablissementTenantView(APIView):
     permission_classes = [IsAuthenticated]
@@ -967,6 +1023,87 @@ class DetailEtablissementTenantView(APIView):
         return Response(_serialiser_etablissement(etablissement))
 
 
+class PromouvoirAnneeAcademiqueView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        operation_id="promouvoirAnneeAcademique",
+        request=inline_serializer(
+            name="PromotionAnneeAcademiqueRequete",
+            fields={"nouveau_libelle_annee": serializers.CharField(max_length=32)},
+        ),
+        responses=inline_serializer(
+            name="PromotionAnneeAcademiqueReponse",
+            fields={
+                "annee_academique": serializers.CharField(),
+                "nombre_promus": serializers.IntegerField(),
+                "ids_apprenants_promus": serializers.ListField(
+                    child=serializers.CharField()
+                ),
+            },
+        ),
+    )
+    @transaction.atomic
+    def post(self, request, id_etablissement: str):
+        etablissement = get_object_or_404(
+            Etablissement.objects.select_for_update(),
+            pk=id_etablissement,
+        )
+        _verifier_permission(request, etablissement, "parametres:gerer")
+
+        if not isinstance(request.data, dict):
+            raise ValidationError("Le corps de la requête doit être un objet JSON.")
+        nouveau_libelle_annee = request.data.get("nouveau_libelle_annee")
+        longueur_max = Etablissement._meta.get_field("annee_academique").max_length
+        if (
+            not isinstance(nouveau_libelle_annee, str)
+            or not nouveau_libelle_annee.strip()
+            or len(nouveau_libelle_annee.strip()) > longueur_max
+        ):
+            raise ValidationError(
+                {
+                    "nouveau_libelle_annee": (
+                        "Le libellé de l’année académique est obligatoire et ne peut pas "
+                        f"dépasser {longueur_max} caractères."
+                    )
+                }
+            )
+        nouveau_libelle_annee = nouveau_libelle_annee.strip()
+
+        apprenants_eligibles = Apprenant.objects.select_for_update().filter(
+            etablissement=etablissement,
+            moyenne_generale__gte=etablissement.note_passage,
+            indice_etape__lt=5,
+        ).order_by("pk")
+        ids_apprenants_promus = list(
+            apprenants_eligibles.values_list("pk", flat=True)
+        )
+
+        etablissement.annee_academique = nouveau_libelle_annee
+        etablissement.save(update_fields=("annee_academique", "modifie_le"))
+        nombre_promus = apprenants_eligibles.update(
+            indice_etape=F("indice_etape") + 1
+        )
+        if nombre_promus != len(ids_apprenants_promus):
+            raise PromotionAnneeAcademiqueRefusee(
+                "La liste des apprenants admissibles a changé pendant la promotion."
+            )
+        _enregistrer_audit_api(
+            request,
+            etablissement,
+            "PROMOTION",
+            "annee_academique",
+            nouveau_libelle_annee,
+        )
+        return Response(
+            {
+                "annee_academique": etablissement.annee_academique,
+                "nombre_promus": nombre_promus,
+                "ids_apprenants_promus": ids_apprenants_promus,
+            }
+        )
+
+
 class PermissionsRolesTenantView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -999,6 +1136,7 @@ class PermissionsRolesTenantView(APIView):
         ),
         responses=OpenApiTypes.OBJECT,
     )
+    @transaction.atomic
     def put(self, request, id_etablissement: str):
         etablissement = _obtenir_etablissement(id_etablissement)
         _verifier_permission(request, etablissement, "roles:gerer")

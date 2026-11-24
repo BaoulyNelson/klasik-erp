@@ -330,6 +330,110 @@ const COLLECTIONS_API: { cle: keyof EtatPersiste; collection: string }[] = [
   { cle: 'demandes_conge', collection: 'demandes_conge' },
 ];
 
+function retirer_etablissement_de_instantane(
+  etat: EtatPersiste,
+  id_etablissement: string
+): EtatPersiste {
+  const resultat: EtatPersiste = {
+    ...etat,
+    etablissements: etat.etablissements.filter((element) => element.id !== id_etablissement),
+    utilisateurs: etat.utilisateurs.map((utilisateur) => ({
+      ...utilisateur,
+      affiliations: utilisateur.affiliations.filter(
+        (affiliation) => affiliation.id_etablissement !== id_etablissement
+      ),
+    })),
+    surcharges_permissions: Object.fromEntries(
+      Object.entries(etat.surcharges_permissions).filter(
+        ([cle]) => !cle.startsWith(`${id_etablissement}:`)
+      )
+    ),
+  };
+  for (const { cle } of COLLECTIONS_API) {
+    const lignes = etat[cle];
+    if (Array.isArray(lignes)) {
+      (resultat as unknown as Record<string, unknown>)[cle] = lignes.filter(
+        (ligne) =>
+          !ligne ||
+          typeof ligne !== 'object' ||
+          (ligne as { id_etablissement?: unknown }).id_etablissement !== id_etablissement
+      );
+    }
+  }
+  return resultat;
+}
+
+async function synchroniser_differences_api(
+  etat_precedent: EtatPersiste,
+  etat_courant: EtatPersiste,
+  etablissements_en_suppression: Set<string>
+): Promise<void> {
+  for (const { cle, collection } of COLLECTIONS_API) {
+    const anciennes_lignes = etat_precedent[cle];
+    const nouvelles_lignes = etat_courant[cle];
+    if (!Array.isArray(anciennes_lignes) || !Array.isArray(nouvelles_lignes)) continue;
+    const obtenir_reference = (
+      ligne: unknown
+    ): { cle: string; id: string; tenant: string } => {
+      if (!ligne || typeof ligne !== 'object') {
+        throw new Error('Une donnée métier API doit être un objet.');
+      }
+      const donnee = ligne as { id?: unknown; id_etablissement?: unknown };
+      if (typeof donnee.id !== 'string' || typeof donnee.id_etablissement !== 'string') {
+        throw new Error('Une donnée métier API doit préciser son identifiant et son établissement.');
+      }
+      return {
+        cle: `${donnee.id_etablissement}:${donnee.id}`,
+        id: donnee.id,
+        tenant: donnee.id_etablissement,
+      };
+    };
+    const anciennes = new Map(
+      anciennes_lignes
+        .map((ligne) => [obtenir_reference(ligne), ligne] as const)
+        .filter(
+          ([reference]) => !etablissements_en_suppression.has(reference.tenant)
+        )
+        .map(([reference, ligne]) => [reference.cle, ligne])
+    );
+    const nouvelles = new Map(
+      nouvelles_lignes
+        .map((ligne) => [obtenir_reference(ligne), ligne] as const)
+        .filter(
+          ([reference]) => !etablissements_en_suppression.has(reference.tenant)
+        )
+        .map(([reference, ligne]) => [reference.cle, ligne])
+    );
+    for (const [cle_ligne, ancienne] of anciennes) {
+      if (nouvelles.has(cle_ligne)) continue;
+      const ligne = obtenir_reference(ancienne);
+      const collection_typed = COLLECTIONS_RELATIONNELLES_TYPED.has(collection);
+      const base = collection_typed
+        ? `/etablissements/${encodeURIComponent(ligne.tenant)}/${collection}/`
+        : `/etablissements/${encodeURIComponent(ligne.tenant)}/donnees/${collection}/`;
+      await requeteApi<null>(`${base}${encodeURIComponent(ligne.id)}/`, {
+        method: 'DELETE',
+      });
+    }
+    for (const [cle_ligne, nouvelle] of nouvelles) {
+      const ancienne = anciennes.get(cle_ligne);
+      const donnee = obtenir_reference(nouvelle);
+      const collection_typed = COLLECTIONS_RELATIONNELLES_TYPED.has(collection);
+      const base = collection_typed
+        ? `/etablissements/${encodeURIComponent(donnee.tenant)}/${collection}/`
+        : `/etablissements/${encodeURIComponent(donnee.tenant)}/donnees/${collection}/`;
+      if (!ancienne) {
+        await requeteApi<unknown>(base, { method: 'POST', body: nouvelle });
+      } else if (JSON.stringify(ancienne) !== JSON.stringify(nouvelle)) {
+        await requeteApi<unknown>(`${base}${encodeURIComponent(donnee.id)}/`, {
+          method: 'PATCH',
+          body: nouvelle,
+        });
+      }
+    }
+  }
+}
+
 const COLLECTIONS_RELATIONNELLES_TYPED = new Set([
   'unites',
   'elements',
@@ -459,6 +563,45 @@ async function charger_journaux_audit_api(
     if (erreur instanceof ErreurApi && erreur.statut === 403) return [];
     throw erreur;
   }
+}
+
+async function recharger_etat_tenant_api(
+  id_etablissement: string,
+  etat_precedent: EtatPersiste
+): Promise<EtatPersiste> {
+  const [collections, journaux_audit] = await Promise.all([
+    Promise.all(
+      COLLECTIONS_API.map(async ({ cle, collection }) =>
+        [cle, await charger_collection_api(id_etablissement, collection)] as const
+      )
+    ),
+    requeteApi<EntreeJournalAudit[]>(
+      `/etablissements/${encodeURIComponent(id_etablissement)}/audit/`
+    ),
+  ]);
+  const etat_recharge: EtatPersiste = {
+    ...etat_precedent,
+    journaux_audit: [
+      ...etat_precedent.journaux_audit.filter(
+        (entree) => entree.id_etablissement !== id_etablissement
+      ),
+      ...journaux_audit,
+    ],
+  };
+  for (const [cle, lignes] of collections) {
+    const lignes_precedentes = etat_precedent[cle];
+    if (!Array.isArray(lignes_precedentes)) continue;
+    (etat_recharge as unknown as Record<string, unknown>)[cle] = [
+      ...lignes_precedentes.filter(
+        (ligne) =>
+          !ligne ||
+          typeof ligne !== 'object' ||
+          (ligne as { id_etablissement?: unknown }).id_etablissement !== id_etablissement
+      ),
+      ...lignes,
+    ];
+  }
+  return etat_recharge;
 }
 
 function obtenir_etat_persiste_defaut(): EtatPersiste {
@@ -805,15 +948,15 @@ interface ValeurContexteErp {
   mettre_a_jour_etablissement: (
     id_etablissement: string,
     modifications: Partial<ConfigurationEtablissement>
-  ) => boolean;
-  basculer_statut_etablissement: (id_etablissement: string) => void;
+  ) => Promise<boolean>;
+  basculer_statut_etablissement: (id_etablissement: string) => Promise<boolean>;
   creer_etablissement_complet: (
     etablissement: ConfigurationEtablissement,
     nouvelles_unites: UniteAcademique[],
     nouveaux_elements: ElementPedagogique[],
     compte_fondateur?: SaisieFondateurEtablissement
   ) => Promise<boolean>;
-  supprimer_etablissement: (id_etablissement: string) => boolean;
+  supprimer_etablissement: (id_etablissement: string) => Promise<boolean>;
   connecter_avec_google: () => Promise<{ ok: boolean; besoin_etablissement?: boolean; erreur?: string }>;
   authentifier_par_identifiants: (
     identifiant: string,
@@ -1149,8 +1292,8 @@ interface ValeurContexteErp {
   }) => void;
   ajouter_commentaire_devoir_lms: (id_devoir: string, message: string) => void;
   soumettre_devoir_lms: (id_devoir: string) => void;
-  promouvoir_annee_academique: (nouveau_libelle_annee: string) => number;
-  reinitialiser_donnees_demo: () => void;
+  promouvoir_annee_academique: (nouveau_libelle_annee: string) => Promise<number | false>;
+  reinitialiser_donnees_demo: () => boolean;
 
   // Modules complémentaires
   ajouter_article_actualite: (
@@ -1185,7 +1328,7 @@ interface ValeurContexteErp {
     mot_de_passe_demo: string;
     double_facteur_actif: boolean;
     doit_changer_mot_de_passe?: boolean;
-  }) => void;
+  }) => Promise<boolean>;
   modifier_utilisateur_etablissement: (
     id_utilisateur: string,
     modifications: {
@@ -1194,8 +1337,8 @@ interface ValeurContexteErp {
       telephone?: string;
       fonction_locale?: string;
     }
-  ) => void;
-  supprimer_utilisateur_etablissement: (id_utilisateur: string) => boolean;
+  ) => Promise<boolean>;
+  supprimer_utilisateur_etablissement: (id_utilisateur: string) => Promise<boolean>;
   mettre_a_jour_role_utilisateur: (id_utilisateur: string, id_role: IdentifiantRole) => void;
   basculer_actif_utilisateur: (id_utilisateur: string) => void;
   basculer_2fa_utilisateur: (id_utilisateur: string) => void;
@@ -1203,7 +1346,7 @@ interface ValeurContexteErp {
     id_utilisateur: string,
     nouveau_mot_de_passe: string,
     options?: { doit_changer_mot_de_passe?: boolean }
-  ) => boolean;
+  ) => Promise<boolean>;
   deverrouiller_compte_utilisateur: (id_utilisateur: string) => void;
   importer_donnees_lot: (saisie: {
     cible: LotImportation['cible'];
@@ -1268,10 +1411,11 @@ interface ValeurContexteErp {
   mettre_a_jour_configuration_plateforme: (
     modifications: Partial<ConfigurationPlateforme>
   ) => void;
-  reinitialiser_configuration_plateforme: () => void;
+  reinitialiser_configuration_plateforme: () => Promise<boolean>;
 
   // Notifications, Toasts & Audit
   ajouter_toast: (toast: Omit<MessageToast, 'id'>) => void;
+  confirmer_mutation_metier: (mutation: () => void | boolean) => Promise<boolean>;
   fermer_toast: (id: string) => void;
   marquer_toutes_notifications_lues: () => void;
   ajouter_entree_audit: (entree: Omit<EntreeJournalAudit, 'id' | 'horodatage'>) => void;
@@ -1280,22 +1424,93 @@ interface ValeurContexteErp {
 const ContexteErp = createContext<ValeurContexteErp | null>(null);
 
 export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [etat, definir_etat] = useState<EtatPersiste>(charger_etat_initial);
+  const [etat, definir_etat_interne] = useState<EtatPersiste>(charger_etat_initial);
   const session_initiale = useMemo(() => charger_session_initiale(), []);
   const instantane_api = useRef<EtatPersiste | null>(null);
   const file_synchronisation_api = useRef<Promise<void>>(Promise.resolve());
   const notifications_api_precedentes = useRef<NotificationSysteme[] | null>(null);
+  const etablissements_suppression_api = useRef(new Set<string>());
+  const mutation_api_en_attente = useRef(false);
+  const toasts_api_en_attente = useRef<Array<Omit<MessageToast, 'id'>>>([]);
+  const etat_rendu_ref = useRef(etat);
+  const etat_en_attente_api = useRef<EtatPersiste | null>(null);
+  const synchronisation_api_planifiee = useRef(false);
+  const generation_synchronisation_api = useRef(0);
+  const recuperer_apres_echec_api_ref = useRef<(erreur: unknown) => Promise<void>>(
+    async () => {}
+  );
+  etat_rendu_ref.current = etat;
   const [mode_affichage, definir_mode_affichage] = useState<'accueil' | 'espace_travail'>(
     session_initiale.mode_affichage
   );
   const [est_authentifie, definir_est_authentifie] = useState<boolean>(
     Boolean(session_initiale.est_authentifie)
   );
+  const planifier_synchronisation_api = () => {
+    if (synchronisation_api_planifiee.current) return;
+    synchronisation_api_planifiee.current = true;
+    void Promise.resolve().then(() => {
+      synchronisation_api_planifiee.current = false;
+      const etat_cible = etat_en_attente_api.current;
+      if (!etat_cible) return;
+      const generation = generation_synchronisation_api.current;
+      const execution = file_synchronisation_api.current.then(async () => {
+        if (generation !== generation_synchronisation_api.current) return;
+        const precedent = instantane_api.current;
+        if (precedent) {
+          await synchroniser_differences_api(
+            precedent,
+            etat_cible,
+            etablissements_suppression_api.current
+          );
+          if (generation !== generation_synchronisation_api.current) return;
+          instantane_api.current = etat_cible;
+        }
+        definir_etat_interne(etat_cible);
+        if (etat_en_attente_api.current === etat_cible) {
+          etat_en_attente_api.current = null;
+        }
+      });
+      file_synchronisation_api.current = execution.catch((erreur: unknown) => {
+        if (generation !== generation_synchronisation_api.current) return;
+        generation_synchronisation_api.current += 1;
+        return recuperer_apres_echec_api_ref.current(erreur);
+      });
+    });
+  };
+  const definir_etat: React.Dispatch<React.SetStateAction<EtatPersiste>> = (valeur) => {
+    if (!SOURCE_API || !est_authentifie || !instantane_api.current) {
+      definir_etat_interne(valeur);
+      return;
+    }
+    const precedent = etat_en_attente_api.current ?? etat_rendu_ref.current;
+    const prochain =
+      typeof valeur === 'function'
+        ? (valeur as (precedent: EtatPersiste) => EtatPersiste)(precedent)
+        : valeur;
+    if (instantane_api.current === prochain) {
+      etat_en_attente_api.current = null;
+      definir_etat_interne(prochain);
+      return;
+    }
+    mutation_api_en_attente.current = true;
+    const collections_modifiees = COLLECTIONS_API.some(
+      ({ cle }) => precedent[cle] !== prochain[cle]
+    );
+    if (!etat_en_attente_api.current && !collections_modifiees) {
+      definir_etat_interne(prochain);
+      return;
+    }
+    etat_en_attente_api.current = prochain;
+    planifier_synchronisation_api();
+  };
   const [restauration_session_api_en_cours, definir_restauration_session_api_en_cours] =
     useState(() => SOURCE_API && sessionApiPresente());
   const [id_etablissement_actif, definir_id_etablissement_actif] = useState<string>(
     session_initiale.id_etablissement_actif
   );
+  const id_etablissement_actif_ref = useRef(id_etablissement_actif);
+  id_etablissement_actif_ref.current = id_etablissement_actif;
   const [id_utilisateur_actif, definir_id_utilisateur_actif] = useState<string>(
     session_initiale.id_utilisateur_actif
   );
@@ -1642,12 +1857,72 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [utilisateur_actif, etablissement_actif.id]);
 
   const ajouter_toast = useCallback((toast: Omit<MessageToast, 'id'>) => {
+    if (
+      SOURCE_API &&
+      mutation_api_en_attente.current &&
+      toast.variante !== 'error'
+    ) {
+      toasts_api_en_attente.current.push(toast);
+      return;
+    }
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     definir_notifications_toast((precedent) => [...precedent, { ...toast, id }]);
     setTimeout(() => {
       definir_notifications_toast((precedent) => precedent.filter((t) => t.id !== id));
     }, 4200);
   }, []);
+
+  const confirmer_mutation_metier = useCallback(
+    async (mutation: () => void | boolean): Promise<boolean> => {
+      const generation = generation_synchronisation_api.current;
+      const resultat = mutation();
+      if (resultat === false) return false;
+      if (!SOURCE_API) return true;
+      await Promise.resolve();
+      await file_synchronisation_api.current;
+      return generation_synchronisation_api.current === generation;
+    },
+    []
+  );
+
+  recuperer_apres_echec_api_ref.current = async (erreur: unknown) => {
+    const message_mutation =
+      erreur instanceof Error
+        ? erreur.message
+        : 'Le serveur n’a pas pu enregistrer toutes les modifications.';
+    const id_tenant = id_etablissement_actif_ref.current;
+    const instantane_precedent = instantane_api.current;
+    etat_en_attente_api.current = null;
+    mutation_api_en_attente.current = false;
+    toasts_api_en_attente.current = [];
+
+    try {
+      if (!id_tenant || !instantane_precedent) {
+        throw new Error('Aucun établissement actif ne peut être rechargé.');
+      }
+      const etat_recharge = await recharger_etat_tenant_api(id_tenant, instantane_precedent);
+      instantane_api.current = etat_recharge;
+      definir_etat_interne(etat_recharge);
+      ajouter_toast({
+        titre: 'Modifications non enregistrées; données actualisées',
+        description: `${message_mutation} Les données de l’établissement actif ont été rechargées depuis le serveur.`,
+        variante: 'error',
+      });
+    } catch (erreur_actualisation: unknown) {
+      if (instantane_precedent) {
+        definir_etat_interne(instantane_precedent);
+      }
+      ajouter_toast({
+        titre: 'Échec de la modification et du rechargement',
+        description: `${message_mutation} Actualisation impossible : ${
+          erreur_actualisation instanceof Error
+            ? erreur_actualisation.message
+            : 'le serveur n’a pas pu recharger les données.'
+        } L’état local conserve le dernier instantané confirmé; des écritures partielles peuvent subsister sur le serveur.`,
+        variante: 'error',
+      });
+    }
+  };
 
   const fermer_toast = useCallback((id: string) => {
     definir_notifications_toast((precedent) => precedent.filter((t) => t.id !== id));
@@ -1894,7 +2169,10 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const mettre_a_jour_etablissement = useCallback(
-    (id_etablissement: string, modifications: Partial<ConfigurationEtablissement>): boolean => {
+    async (
+      id_etablissement: string,
+      modifications: Partial<ConfigurationEtablissement>
+    ): Promise<boolean> => {
       const etab_actuel = etat.etablissements.find((e) => e.id === id_etablissement);
       if (modifications.courriel !== undefined && !valider_courriel(modifications.courriel)) {
         ajouter_toast({
@@ -1942,34 +2220,34 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         const chemin = est_supervision_plateforme
           ? `/plateforme/etablissements/${encodeURIComponent(id_etablissement)}/`
           : `/etablissements/${encodeURIComponent(id_etablissement)}/`;
-        void requeteApi<ConfigurationEtablissement>(
-          chemin,
-          { method: 'PATCH', body: modifications }
-        )
-          .then((etablissement_api) => {
-            definir_etat((precedent) => ({
-              ...precedent,
-              etablissements: precedent.etablissements.map((etablissement) =>
-                etablissement.id === id_etablissement ? etablissement_api : etablissement
-              ),
-            }));
-            ajouter_toast({
-              titre: 'Configuration enregistrée',
-              description: 'Les paramètres de l’établissement ont été mis à jour.',
-              variante: 'success',
-            });
-          })
-          .catch((erreur: unknown) => {
-            ajouter_toast({
-              titre: 'Configuration non enregistrée',
-              description:
-                erreur instanceof Error
-                  ? erreur.message
-                  : 'Le serveur n’a pas pu enregistrer les paramètres.',
-              variante: 'error',
-            });
+        try {
+          const etablissement_api = await requeteApi<ConfigurationEtablissement>(chemin, {
+            method: 'PATCH',
+            body: modifications,
           });
-        return true;
+          definir_etat((precedent) => ({
+            ...precedent,
+            etablissements: precedent.etablissements.map((etablissement) =>
+              etablissement.id === id_etablissement ? etablissement_api : etablissement
+            ),
+          }));
+          ajouter_toast({
+            titre: 'Configuration enregistrée',
+            description: 'Les paramètres de l’établissement ont été mis à jour.',
+            variante: 'success',
+          });
+          return true;
+        } catch (erreur: unknown) {
+          ajouter_toast({
+            titre: 'Configuration non enregistrée',
+            description:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Le serveur n’a pas pu enregistrer les paramètres.',
+            variante: 'error',
+          });
+          return false;
+        }
       }
 
       definir_etat((precedent) => ({
@@ -2005,9 +2283,9 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const basculer_statut_etablissement = useCallback(
-    (id_etablissement: string) => {
+    async (id_etablissement: string): Promise<boolean> => {
       const cible = etat.etablissements.find((e) => e.id === id_etablissement);
-      if (!cible) return;
+      if (!cible) return false;
       const statut_suivant: ConfigurationEtablissement['statut'] =
         cible.statut === 'SUSPENDU' ? 'ACTIF' : 'SUSPENDU';
 
@@ -2020,40 +2298,40 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         const chemin = est_supervision_plateforme
           ? `/plateforme/etablissements/${encodeURIComponent(id_etablissement)}/`
           : `/etablissements/${encodeURIComponent(id_etablissement)}/`;
-        void requeteApi<ConfigurationEtablissement>(
-          chemin,
-          { method: 'PATCH', body: { statut: statut_suivant } }
-        )
-          .then((etablissement_api) => {
-            definir_etat((precedent) => ({
-              ...precedent,
-              etablissements: precedent.etablissements.map((etablissement) =>
-                etablissement.id === id_etablissement ? etablissement_api : etablissement
-              ),
-            }));
-            ajouter_toast({
-              titre:
-                statut_suivant === 'SUSPENDU'
-                  ? `${cible.nom_court} suspendu`
-                  : `${cible.nom_court} réactivé`,
-              description:
-                statut_suivant === 'SUSPENDU'
-                  ? 'Les accès opérationnels de cet établissement sont temporairement bloqués.'
-                  : 'Les utilisateurs de cet établissement peuvent de nouveau travailler.',
-              variante: statut_suivant === 'SUSPENDU' ? 'warning' : 'success',
-            });
-          })
-          .catch((erreur: unknown) => {
-            ajouter_toast({
-              titre: 'Statut non modifié',
-              description:
-                erreur instanceof Error
-                  ? erreur.message
-                  : 'Le serveur n’a pas pu modifier le statut.',
-              variante: 'error',
-            });
+        try {
+          const etablissement_api = await requeteApi<ConfigurationEtablissement>(chemin, {
+            method: 'PATCH',
+            body: { statut: statut_suivant },
           });
-        return;
+          definir_etat((precedent) => ({
+            ...precedent,
+            etablissements: precedent.etablissements.map((etablissement) =>
+              etablissement.id === id_etablissement ? etablissement_api : etablissement
+            ),
+          }));
+          ajouter_toast({
+            titre:
+              statut_suivant === 'SUSPENDU'
+                ? `${cible.nom_court} suspendu`
+                : `${cible.nom_court} réactivé`,
+            description:
+              statut_suivant === 'SUSPENDU'
+                ? 'Les accès opérationnels de cet établissement sont temporairement bloqués.'
+                : 'Les utilisateurs de cet établissement peuvent de nouveau travailler.',
+            variante: statut_suivant === 'SUSPENDU' ? 'warning' : 'success',
+          });
+          return true;
+        } catch (erreur: unknown) {
+          ajouter_toast({
+            titre: 'Statut non modifié',
+            description:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Le serveur n’a pas pu modifier le statut.',
+            variante: 'error',
+          });
+          return false;
+        }
       }
 
       definir_etat((precedent) => ({
@@ -2086,6 +2364,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
             : 'Les utilisateurs de cet établissement peuvent de nouveau travailler.',
         variante: statut_suivant === 'SUSPENDU' ? 'warning' : 'success',
       });
+      return true;
     },
     [
       etat.etablissements,
@@ -2514,7 +2793,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const supprimer_etablissement = useCallback(
-    (id_etablissement: string): boolean => {
+    async (id_etablissement: string): Promise<boolean> => {
       if (etat.etablissements.length <= 1) {
         ajouter_toast({
           titre: 'Suppression impossible',
@@ -2526,6 +2805,50 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const cible = etat.etablissements.find((e) => e.id === id_etablissement);
       if (!cible) return false;
+
+      if (SOURCE_API) {
+        try {
+          if (!utilisateur_actif.est_super_admin_plateforme) {
+            ajouter_toast({
+              titre: 'Suppression impossible',
+              description:
+                'Seule l’administration de la plateforme peut supprimer un établissement depuis l’API.',
+              variante: 'error',
+            });
+            return false;
+          }
+          etablissements_suppression_api.current.add(id_etablissement);
+          const chemin = `/plateforme/etablissements/${encodeURIComponent(id_etablissement)}/`;
+          const suppression = file_synchronisation_api.current.then(() =>
+            requeteApi<null>(chemin, {
+              method: 'DELETE',
+              body: { code_confirmation: cible.code },
+            })
+          );
+          file_synchronisation_api.current = suppression.then(
+            () => undefined,
+            () => undefined
+          );
+          await suppression;
+          if (instantane_api.current) {
+            instantane_api.current = retirer_etablissement_de_instantane(
+              instantane_api.current,
+              id_etablissement
+            );
+          }
+        } catch (erreur: unknown) {
+          etablissements_suppression_api.current.delete(id_etablissement);
+          ajouter_toast({
+            titre: 'Établissement non supprimé',
+            description:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Le serveur n’a pas pu supprimer cet établissement.',
+            variante: 'error',
+          });
+          return false;
+        }
+      }
 
       const etablissements_restants = etat.etablissements.filter(
         (e) => e.id !== id_etablissement
@@ -2981,68 +3304,26 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     const execution = file_synchronisation_api.current.then(async () => {
       const instantane_precedent = instantane_api.current;
       if (!instantane_precedent) return;
-      for (const { cle, collection } of COLLECTIONS_API) {
-        const anciennes_lignes = instantane_precedent[cle];
-        const nouvelles_lignes = etat_courant[cle];
-        if (!Array.isArray(anciennes_lignes) || !Array.isArray(nouvelles_lignes)) continue;
-        const obtenir_reference = (ligne: unknown): { cle: string; id: string; tenant: string } => {
-          if (!ligne || typeof ligne !== 'object') {
-            throw new Error('Une donnée métier API doit être un objet.');
-          }
-          const donnee = ligne as { id?: unknown; id_etablissement?: unknown };
-          if (typeof donnee.id !== 'string' || typeof donnee.id_etablissement !== 'string') {
-            throw new Error('Une donnée métier API doit préciser son identifiant et son établissement.');
-          }
-          return {
-            cle: `${donnee.id_etablissement}:${donnee.id}`,
-            id: donnee.id,
-            tenant: donnee.id_etablissement,
-          };
-        };
-        const anciennes = new Map(
-          anciennes_lignes.map((ligne) => [obtenir_reference(ligne).cle, ligne])
-        );
-        const nouvelles = new Map(
-          nouvelles_lignes.map((ligne) => [obtenir_reference(ligne).cle, ligne])
-        );
-        for (const [cle_ligne, ancienne] of anciennes) {
-          if (nouvelles.has(cle_ligne)) continue;
-          const ligne = obtenir_reference(ancienne);
-          const collection_typed = COLLECTIONS_RELATIONNELLES_TYPED.has(collection);
-          const base = collection_typed
-            ? `/etablissements/${encodeURIComponent(ligne.tenant)}/${collection}/`
-            : `/etablissements/${encodeURIComponent(ligne.tenant)}/donnees/${collection}/`;
-          await requeteApi<null>(
-            `${base}${encodeURIComponent(ligne.id)}/`,
-            { method: 'DELETE' }
-          );
-        }
-        for (const [cle_ligne, nouvelle] of nouvelles) {
-          const ancienne = anciennes.get(cle_ligne);
-          const donnee = obtenir_reference(nouvelle);
-          const collection_typed = COLLECTIONS_RELATIONNELLES_TYPED.has(collection);
-          const base = collection_typed
-            ? `/etablissements/${encodeURIComponent(donnee.tenant)}/${collection}/`
-            : `/etablissements/${encodeURIComponent(donnee.tenant)}/donnees/${collection}/`;
-          if (!ancienne) {
-            await requeteApi<unknown>(base, { method: 'POST', body: nouvelle });
-          } else if (JSON.stringify(ancienne) !== JSON.stringify(nouvelle)) {
-            await requeteApi<unknown>(`${base}${encodeURIComponent(donnee.id)}/`, {
-              method: 'PATCH',
-              body: nouvelle,
-            });
-          }
-        }
-      }
+      await synchroniser_differences_api(
+        instantane_precedent,
+        etat_courant,
+        etablissements_suppression_api.current
+      );
       instantane_api.current = etat_courant;
+      if (
+        etat_rendu_ref.current === etat_courant &&
+        etat_en_attente_api.current === null
+      ) {
+        mutation_api_en_attente.current = false;
+        const toasts = toasts_api_en_attente.current.splice(0);
+        toasts.forEach((toast) => ajouter_toast(toast));
+      }
     });
     file_synchronisation_api.current = execution.catch((erreur: unknown) => {
-      ajouter_toast({
-        titre: 'Synchronisation API impossible',
-        description:
-          erreur instanceof Error ? erreur.message : 'Une erreur empêche la synchronisation.',
-        variante: 'error',
-      });
+      if (etat_rendu_ref.current === etat_courant) {
+        generation_synchronisation_api.current += 1;
+        return recuperer_apres_echec_api_ref.current(erreur);
+      }
     });
   }, [ajouter_toast, est_authentifie, etat]);
 
@@ -3055,9 +3336,15 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     ) {
       return;
     }
-    const precedentes = notifications_api_precedentes.current;
+    const precedentes = notifications_api_precedentes.current.filter(
+      (notification) =>
+        !etablissements_suppression_api.current.has(notification.id_etablissement)
+    );
     const courantes = notifications.filter(
       (notification) => notification.id_etablissement === id_etablissement_actif
+    ).filter(
+      (notification) =>
+        !etablissements_suppression_api.current.has(notification.id_etablissement)
     );
     const anciennes = new Map(precedentes.map((notification) => [notification.id, notification]));
     const nouvelles = new Map(courantes.map((notification) => [notification.id, notification]));
@@ -6421,8 +6708,84 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const promouvoir_annee_academique = useCallback(
-    (nouveau_libelle_annee: string): number => {
-      let promus = 0;
+    async (nouveau_libelle_annee: string): Promise<number | false> => {
+      if (SOURCE_API) {
+        try {
+          const resultat = await requeteApi<{
+            annee_academique: string;
+            nombre_promus: number;
+            ids_apprenants_promus: string[];
+          }>(
+            `/etablissements/${encodeURIComponent(etablissement_actif.id)}/annee-academique/promouvoir/`,
+            {
+              method: 'POST',
+              body: { nouveau_libelle_annee },
+            }
+          );
+          let journaux_audit: EntreeJournalAudit[] | undefined;
+          try {
+            journaux_audit = await requeteApi<EntreeJournalAudit[]>(
+              `/etablissements/${encodeURIComponent(etablissement_actif.id)}/audit/`
+            );
+          } catch {
+            ajouter_toast({
+              titre: 'Journal d’audit non actualisé',
+              description:
+                'La promotion est enregistrée, mais le journal n’a pas pu être rechargé.',
+              variante: 'warning',
+            });
+          }
+          const ids_promus = new Set(resultat.ids_apprenants_promus);
+          const etat_mis_a_jour: EtatPersiste = {
+            ...etat,
+            etablissements: etat.etablissements.map((etablissement) =>
+              etablissement.id === etablissement_actif.id
+                ? { ...etablissement, annee_academique: resultat.annee_academique }
+                : etablissement
+            ),
+            apprenants: etat.apprenants.map((apprenant) =>
+              apprenant.id_etablissement === etablissement_actif.id &&
+              ids_promus.has(apprenant.id)
+                ? {
+                    ...apprenant,
+                    indice_etape: Math.min(
+                      5,
+                      apprenant.indice_etape + 1
+                    ) as Apprenant['indice_etape'],
+                  }
+                : apprenant
+            ),
+            ...(journaux_audit ? { journaux_audit } : {}),
+          };
+          instantane_api.current = etat_mis_a_jour;
+          definir_etat(etat_mis_a_jour);
+          ajouter_toast({
+            titre: `Année ${resultat.annee_academique} activée`,
+            description: `${resultat.nombre_promus} ${terminologie.apprenant_pluriel.toLowerCase()} promu(s).`,
+            variante: 'success',
+          });
+          return resultat.nombre_promus;
+        } catch (erreur: unknown) {
+          ajouter_toast({
+            titre: 'Promotion non effectuée',
+            description:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Le serveur n’a pas pu promouvoir l’année académique.',
+            variante: 'error',
+          });
+          return false;
+        }
+      }
+
+      const apprenants_promus = etat.apprenants.filter(
+        (apprenant) =>
+          apprenant.id_etablissement === etablissement_actif.id &&
+          apprenant.moyenne_generale >= etablissement_actif.note_passage &&
+          apprenant.indice_etape < 5
+      );
+      const ids_promus = new Set(apprenants_promus.map((apprenant) => apprenant.id));
+      const promus = ids_promus.size;
       definir_etat((precedent) => ({
         ...precedent,
         etablissements: precedent.etablissements.map((e) =>
@@ -6431,11 +6794,8 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
             : e
         ),
         apprenants: precedent.apprenants.map((a) => {
-          if (a.id_etablissement !== etablissement_actif.id) return a;
-          if (a.moyenne_generale >= etablissement_actif.note_passage && a.indice_etape < 5) {
-            promus += 1;
+          if (a.id_etablissement === etablissement_actif.id && ids_promus.has(a.id))
             return { ...a, indice_etape: (a.indice_etape + 1) as Apprenant['indice_etape'] };
-          }
           return a;
         }),
       }));
@@ -6455,6 +6815,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       return promus;
     },
     [
+      etat,
       etablissement_actif.id,
       etablissement_actif.note_passage,
       utilisateur_actif.nom_complet,
@@ -6466,6 +6827,15 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const reinitialiser_donnees_demo = useCallback(() => {
+    if (SOURCE_API) {
+      ajouter_toast({
+        titre: 'Réinitialisation indisponible',
+        description:
+          'Les données de démonstration ne peuvent pas réinitialiser un établissement connecté à l’API.',
+        variante: 'error',
+      });
+      return false;
+    }
     localStorage.removeItem(CLE_STOCKAGE_ETAT);
     localStorage.removeItem(CLE_STOCKAGE_SESSION);
     definir_etat(obtenir_etat_persiste_defaut());
@@ -6479,6 +6849,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       description: 'Les établissements internationaux et leurs jeux de données ont été restaurés.',
       variante: 'info',
     });
+    return true;
   }, [ajouter_toast]);
 
   // Actions des modules complémentaires
@@ -6692,7 +7063,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const creer_utilisateur_etablissement = useCallback(
-    (saisie: {
+    async (saisie: {
       nom_complet: string;
       courriel: string;
       telephone: string;
@@ -6701,65 +7072,64 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
       mot_de_passe_demo: string;
       double_facteur_actif: boolean;
       doit_changer_mot_de_passe?: boolean;
-    }) => {
+    }): Promise<boolean> => {
       if (SOURCE_API) {
-        void requeteApi<CompteUtilisateur>(
-          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/`,
-          {
-            method: 'POST',
-            body: {
-              nom_complet: saisie.nom_complet,
-              courriel: saisie.courriel,
-              telephone: saisie.telephone,
-              id_role: saisie.id_role,
-              fonction_locale: saisie.fonction_locale,
-              mot_de_passe: saisie.mot_de_passe_demo,
-              double_facteur_actif: saisie.double_facteur_actif,
-              doit_changer_mot_de_passe: saisie.doit_changer_mot_de_passe ?? false,
-            },
-          }
-        )
-          .then((nouvel_utilisateur_api) => {
-            const nouvel_utilisateur =
-              nouvel_utilisateur_api.id === utilisateur_actif.id
-                ? {
-                    ...nouvel_utilisateur_api,
-                    affiliations: [
-                      ...utilisateur_actif.affiliations.filter(
-                        (affiliation) =>
-                          affiliation.id_etablissement !== etablissement_actif.id
-                      ),
-                      ...nouvel_utilisateur_api.affiliations,
-                    ],
-                    a_mot_de_passe: utilisateur_actif.a_mot_de_passe,
-                  }
-                : nouvel_utilisateur_api;
-            definir_etat((precedent) => ({
-              ...precedent,
-              utilisateurs: [
-                nouvel_utilisateur,
-                ...precedent.utilisateurs.filter(
-                  (utilisateur) => utilisateur.id !== nouvel_utilisateur.id
-                ),
-              ],
-            }));
-            ajouter_toast({
-              titre: `Invitation envoyée : ${nouvel_utilisateur.nom_complet}`,
-              description: `Un courriel d’accès a été envoyé avec le rôle ${ROLES[saisie.id_role].libelle}.`,
-              variante: 'success',
-            });
-          })
-          .catch((erreur: unknown) => {
-            ajouter_toast({
-              titre: 'Création du compte impossible',
-              description:
-                erreur instanceof Error
-                  ? erreur.message
-                  : 'Le serveur n’a pas pu créer ce compte.',
-              variante: 'error',
-            });
+        try {
+          const nouvel_utilisateur_api = await requeteApi<CompteUtilisateur>(
+            `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/`,
+            {
+              method: 'POST',
+              body: {
+                nom_complet: saisie.nom_complet,
+                courriel: saisie.courriel,
+                telephone: saisie.telephone,
+                id_role: saisie.id_role,
+                fonction_locale: saisie.fonction_locale,
+                mot_de_passe: saisie.mot_de_passe_demo,
+                double_facteur_actif: saisie.double_facteur_actif,
+                doit_changer_mot_de_passe: saisie.doit_changer_mot_de_passe ?? false,
+              },
+            }
+          );
+          const nouvel_utilisateur =
+            nouvel_utilisateur_api.id === utilisateur_actif.id
+              ? {
+                  ...nouvel_utilisateur_api,
+                  affiliations: [
+                    ...utilisateur_actif.affiliations.filter(
+                      (affiliation) => affiliation.id_etablissement !== etablissement_actif.id
+                    ),
+                    ...nouvel_utilisateur_api.affiliations,
+                  ],
+                  a_mot_de_passe: utilisateur_actif.a_mot_de_passe,
+                }
+              : nouvel_utilisateur_api;
+          definir_etat((precedent) => ({
+            ...precedent,
+            utilisateurs: [
+              nouvel_utilisateur,
+              ...precedent.utilisateurs.filter(
+                (utilisateur) => utilisateur.id !== nouvel_utilisateur.id
+              ),
+            ],
+          }));
+          ajouter_toast({
+            titre: `Invitation envoyée : ${nouvel_utilisateur.nom_complet}`,
+            description: `Un courriel d’accès a été envoyé avec le rôle ${ROLES[saisie.id_role].libelle}.`,
+            variante: 'success',
           });
-        return;
+          return true;
+        } catch (erreur: unknown) {
+          ajouter_toast({
+            titre: 'Création du compte impossible',
+            description:
+              erreur instanceof Error
+                ? erreur.message
+                : 'Le serveur n’a pas pu créer ce compte.',
+            variante: 'error',
+          });
+          return false;
+        }
       }
       const initiales =
         saisie.nom_complet
@@ -6814,6 +7184,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         description: `Accès ${ROLES[saisie.id_role].libelle} activé.`,
         variante: 'success',
       });
+      return true;
     },
     [
       etablissement_actif.id,
@@ -6828,7 +7199,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const modifier_utilisateur_etablissement = useCallback(
-    (
+    async (
       id_utilisateur: string,
       modifications: {
         nom_complet?: string;
@@ -6836,29 +7207,29 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         telephone?: string;
         fonction_locale?: string;
       }
-    ) => {
+    ): Promise<boolean> => {
       if (SOURCE_API) {
-        void requeteApi<CompteUtilisateur>(
-          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
-          { method: 'PATCH', body: modifications }
-        )
-          .then((utilisateur_api) => {
-            definir_etat((precedent) => ({
-              ...precedent,
-              utilisateurs: precedent.utilisateurs.map((utilisateur) =>
-                utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
-              ),
-            }));
-            ajouter_toast({ titre: 'Compte utilisateur mis à jour', variante: 'success' });
-          })
-          .catch((erreur: unknown) => {
-            ajouter_toast({
-              titre: 'Compte non modifié',
-              description: erreur instanceof Error ? erreur.message : 'Modification refusée.',
-              variante: 'error',
-            });
+        try {
+          const utilisateur_api = await requeteApi<CompteUtilisateur>(
+            `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+            { method: 'PATCH', body: modifications }
+          );
+          definir_etat((precedent) => ({
+            ...precedent,
+            utilisateurs: precedent.utilisateurs.map((utilisateur) =>
+              utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
+            ),
+          }));
+          ajouter_toast({ titre: 'Compte utilisateur mis à jour', variante: 'success' });
+          return true;
+        } catch (erreur: unknown) {
+          ajouter_toast({
+            titre: 'Compte non modifié',
+            description: erreur instanceof Error ? erreur.message : 'Modification refusée.',
+            variante: 'error',
           });
-        return;
+          return false;
+        }
       }
       definir_etat((precedent) => ({
         ...precedent,
@@ -6890,12 +7261,13 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         }),
       }));
       ajouter_toast({ titre: 'Compte utilisateur mis à jour', variante: 'success' });
+      return true;
     },
     [etablissement_actif.id, ajouter_toast]
   );
 
   const supprimer_utilisateur_etablissement = useCallback(
-    (id_utilisateur: string): boolean => {
+    async (id_utilisateur: string): Promise<boolean> => {
       if (id_utilisateur === utilisateur_actif.id) {
         ajouter_toast({
           titre: 'Suppression refusée',
@@ -6914,27 +7286,27 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         return false;
       }
       if (SOURCE_API) {
-        void requeteApi<null>(
-          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
-          { method: 'DELETE' }
-        )
-          .then(() => {
-            definir_etat((precedent) => ({
-              ...precedent,
-              utilisateurs: precedent.utilisateurs.filter(
-                (utilisateur) => utilisateur.id !== id_utilisateur
-              ),
-            }));
-            ajouter_toast({ titre: 'Compte retiré de l’établissement', variante: 'info' });
-          })
-          .catch((erreur: unknown) => {
-            ajouter_toast({
-              titre: 'Retrait du compte impossible',
-              description: erreur instanceof Error ? erreur.message : 'Opération refusée.',
-              variante: 'error',
-            });
+        try {
+          await requeteApi<null>(
+            `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+            { method: 'DELETE' }
+          );
+          definir_etat((precedent) => ({
+            ...precedent,
+            utilisateurs: precedent.utilisateurs.filter(
+              (utilisateur) => utilisateur.id !== id_utilisateur
+            ),
+          }));
+          ajouter_toast({ titre: 'Compte retiré de l’établissement', variante: 'info' });
+          return true;
+        } catch (erreur: unknown) {
+          ajouter_toast({
+            titre: 'Retrait du compte impossible',
+            description: erreur instanceof Error ? erreur.message : 'Opération refusée.',
+            variante: 'error',
           });
-        return true;
+          return false;
+        }
       }
       definir_etat((precedent) => ({
         ...precedent,
@@ -7123,11 +7495,11 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const reinitialiser_mot_de_passe_utilisateur = useCallback(
-    (
+    async (
       id_utilisateur: string,
       nouveau_mot_de_passe: string,
       options?: { doit_changer_mot_de_passe?: boolean }
-    ): boolean => {
+    ): Promise<boolean> => {
       const politique = valider_politique_mot_de_passe(nouveau_mot_de_passe);
       if (!politique.valide) {
         ajouter_toast({
@@ -7138,42 +7510,42 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
         return false;
       }
       if (SOURCE_API) {
-        void requeteApi<CompteUtilisateur>(
-          `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
-          {
-            method: 'PATCH',
-            body: {
-              mot_de_passe: nouveau_mot_de_passe.trim(),
-              doit_changer_mot_de_passe:
-                options?.doit_changer_mot_de_passe ?? false,
-              tentatives_connexion_echouees: 0,
-              verrouille_jusqua: null,
-            },
-          }
-        )
-          .then((utilisateur_api) => {
-            definir_etat((precedent) => ({
-              ...precedent,
-              utilisateurs: precedent.utilisateurs.map((utilisateur) =>
-                utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
-              ),
-            }));
-            ajouter_toast({
-              titre: 'Mot de passe réinitialisé',
-              description: utilisateur_api.doit_changer_mot_de_passe
-                ? 'L’utilisateur devra définir un nouveau mot de passe à sa prochaine connexion.'
-                : 'Le nouveau mot de passe est actif immédiatement.',
-              variante: 'success',
-            });
-          })
-          .catch((erreur: unknown) => {
-            ajouter_toast({
-              titre: 'Mot de passe non réinitialisé',
-              description: erreur instanceof Error ? erreur.message : 'Action refusée.',
-              variante: 'error',
-            });
+        try {
+          const utilisateur_api = await requeteApi<CompteUtilisateur>(
+            `/etablissements/${encodeURIComponent(etablissement_actif.id)}/utilisateurs/${encodeURIComponent(id_utilisateur)}/`,
+            {
+              method: 'PATCH',
+              body: {
+                mot_de_passe: nouveau_mot_de_passe.trim(),
+                doit_changer_mot_de_passe:
+                  options?.doit_changer_mot_de_passe ?? false,
+                tentatives_connexion_echouees: 0,
+                verrouille_jusqua: null,
+              },
+            }
+          );
+          definir_etat((precedent) => ({
+            ...precedent,
+            utilisateurs: precedent.utilisateurs.map((utilisateur) =>
+              utilisateur.id === id_utilisateur ? utilisateur_api : utilisateur
+            ),
+          }));
+          ajouter_toast({
+            titre: 'Mot de passe réinitialisé',
+            description: utilisateur_api.doit_changer_mot_de_passe
+              ? 'L’utilisateur devra définir un nouveau mot de passe à sa prochaine connexion.'
+              : 'Le nouveau mot de passe est actif immédiatement.',
+            variante: 'success',
           });
-        return true;
+          return true;
+        } catch (erreur: unknown) {
+          ajouter_toast({
+            titre: 'Mot de passe non réinitialisé',
+            description: erreur instanceof Error ? erreur.message : 'Action refusée.',
+            variante: 'error',
+          });
+          return false;
+        }
       }
       const aujourdhui = new Date().toISOString().slice(0, 10);
       const utilisateur_cible = etat.utilisateurs.find((u) => u.id === id_utilisateur);
@@ -7210,6 +7582,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
           : 'Le nouveau mot de passe est actif immédiatement.',
         variante: 'success',
       });
+      return true;
       return true;
     },
     [
@@ -7926,7 +8299,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     ]
   );
 
-  const reinitialiser_configuration_plateforme = useCallback(() => {
+  const reinitialiser_configuration_plateforme = useCallback(async (): Promise<boolean> => {
     const appliquer_reinitialisation = (configuration: ConfigurationPlateforme) => {
       definir_etat((precedent) => ({
         ...precedent,
@@ -7939,30 +8312,34 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     if (SOURCE_API) {
-      void requeteApi<ConfigurationPlateforme>('/plateforme/configuration/', {
-        method: 'PATCH',
-        body: { ...CONFIGURATION_PLATEFORME_DEFAUT, url_logo: null },
-      })
-        .then((configuration) =>
-          appliquer_reinitialisation({
-            ...configuration,
-            url_logo: configuration.url_logo || undefined,
-          })
-        )
-        .catch((erreur: unknown) => {
-          ajouter_toast({
-            titre: 'Configuration plateforme non réinitialisée',
-            description:
-              erreur instanceof Error
-                ? erreur.message
-                : 'Le serveur n’a pas pu réinitialiser la configuration de la plateforme.',
-            variante: 'error',
-          });
+      try {
+        const configuration = await requeteApi<ConfigurationPlateforme>(
+          '/plateforme/configuration/',
+          {
+            method: 'PATCH',
+            body: { ...CONFIGURATION_PLATEFORME_DEFAUT, url_logo: null },
+          }
+        );
+        appliquer_reinitialisation({
+          ...configuration,
+          url_logo: configuration.url_logo || undefined,
         });
-      return;
+        return true;
+      } catch (erreur: unknown) {
+        ajouter_toast({
+          titre: 'Configuration plateforme non réinitialisée',
+          description:
+            erreur instanceof Error
+              ? erreur.message
+              : 'Le serveur n’a pas pu réinitialiser la configuration de la plateforme.',
+          variante: 'error',
+        });
+        return false;
+      }
     }
 
     appliquer_reinitialisation(CONFIGURATION_PLATEFORME_DEFAUT);
+    return true;
   }, [ajouter_toast]);
 
   const ajouter_unite_academique = useCallback(
@@ -8856,6 +9233,7 @@ export const FournisseurErp: React.FC<{ children: React.ReactNode }> = ({ childr
     mettre_a_jour_configuration_plateforme,
     reinitialiser_configuration_plateforme,
     ajouter_toast,
+    confirmer_mutation_metier,
     fermer_toast,
     marquer_toutes_notifications_lues,
     ajouter_entree_audit,

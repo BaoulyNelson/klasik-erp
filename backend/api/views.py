@@ -343,6 +343,7 @@ class ConfigurationPlateformeView(APIView):
         request=ConfigurationMarquePlateformeSerializer,
         responses=ConfigurationMarquePlateformeSerializer,
     )
+    @transaction.atomic
     def patch(self, request):
         if "plateforme:gerer" not in permissions_utilisateur(request.user, None):
             raise PermissionDenied("L’autorisation plateforme:gerer est requise.")
@@ -556,15 +557,16 @@ class ConfirmerReinitialisationView(APIView):
             raise ValidationError(
                 {"nouveau_mot_de_passe": list(erreur.messages)}
             ) from erreur
-        token.utilisateur.set_password(mot_de_passe)
-        token.utilisateur.save(update_fields=("password",))
-        token.utilise_le = timezone.now()
-        token.save(update_fields=("utilise_le",))
-        profil = dict(token.utilisateur.profil or {})
-        profil["tentatives_connexion_echouees"] = 0
-        profil["verrouille_jusqua"] = None
-        token.utilisateur.profil = profil
-        token.utilisateur.save(update_fields=("profil",))
+        with transaction.atomic():
+            token.utilisateur.set_password(mot_de_passe)
+            token.utilisateur.save(update_fields=("password",))
+            token.utilise_le = timezone.now()
+            token.save(update_fields=("utilise_le",))
+            profil = dict(token.utilisateur.profil or {})
+            profil["tentatives_connexion_echouees"] = 0
+            profil["verrouille_jusqua"] = None
+            token.utilisateur.profil = profil
+            token.utilisateur.save(update_fields=("profil",))
         return Response({"message": "Votre mot de passe a été réinitialisé."})
 
 

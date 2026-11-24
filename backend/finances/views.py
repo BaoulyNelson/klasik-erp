@@ -1,4 +1,5 @@
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -64,6 +65,7 @@ class PaiementViewSet(VueTenantMixin, viewsets.ModelViewSet):
         self.verifier_permission("finances:voir")
         return super().retrieve(request, *args, **kwargs)
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         self.verifier_permission("finances:encaisser")
         apprenant = Apprenant.objects.filter(
@@ -92,6 +94,7 @@ class PaiementViewSet(VueTenantMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(paiement).data, status=201)
 
     @action(detail=True, methods=["post"], url_path="annuler")
+    @transaction.atomic
     def annuler(self, request, *args, **kwargs):
         self.verifier_permission("finances:gerer")
         paiement = self.get_object()
